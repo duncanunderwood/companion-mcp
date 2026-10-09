@@ -169,3 +169,19 @@ POST /api/surfaces/rescan
 - The API is fire and forget for presses. A `200 ok` means Companion accepted the request, not that the downstream action succeeded. Confirm state by reading variables back.
 - A press request runs the down actions, waits briefly, then runs the up actions server side. There is no way to know from the response whether the actions completed.
 - Companion does not implement request authentication on this API. Network placement is the only access control.
+
+## Internal tRPC API used by the config-edit tools
+
+Not part of the HTTP API. Used only by `src/companion-config.ts`, behind `COMPANION_ALLOW_CONFIG_EDITS`. Procedure names and input shapes taken from Companion v5.0.7 source (`companion/lib/Page/Controller.ts`, `companion/lib/Controls/ControlsTrpcRouter.ts`, `companion/lib/Controls/EntitiesTrpcRouter.ts`, `shared-lib/lib/Model/`). Transport: tRPC v11 over WebSocket at `/trpc`, plain JSON, no transformer.
+
+| Procedure                     | Kind         | Input                                                                                                              | Returns                                                                                                                        |
+| ----------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `pages.watch`                 | subscription | none                                                                                                               | first message `{ type: 'init', order: pageId[], pages: { [pageId]: { name, controls: { [row]: { [column]: controlId } } } } }` |
+| `controls.watchControl`       | subscription | `{ controlId }`                                                                                                    | first message `{ type: 'init', config, runtime }`; throws if the control does not exist                                        |
+| `controls.resetControl`       | mutation     | `{ location: { pageNumber, row, column }, newType?: string }`                                                      | nothing. Deletes the control at the location; with `newType: 'button-layered'` creates a new empty button                      |
+| `pages.insert`                | mutation     | `{ asPageNumber, pageNames: string[] }`                                                                            | `'ok'`                                                                                                                         |
+| `controls.entities.add`       | mutation     | `{ controlId, entityLocation, ownerId: null, connectionId, entityType: 'action' \| 'feedback', entityDefinition }` | new entity id, or `null`                                                                                                       |
+| `controls.entities.setOption` | mutation     | `{ controlId, entityLocation, entityId, key, value }`                                                              | `boolean`                                                                                                                      |
+| `controls.entities.remove`    | mutation     | `{ controlId, entityLocation, entityId }`                                                                          | `boolean`                                                                                                                      |
+
+`entityLocation` is `'feedbacks'` or `{ stepId: '0', setId: 'down' | 'up' | 'rotate_left' | 'rotate_right' }`. In 5.0.7 the normal button control type is `button-layered` (older versions used `button`) and button style is a layered element model, so style changes go through the HTTP `style` endpoint instead.

@@ -184,3 +184,7 @@ npm run check            # everything CI runs
 Work on a branch per phase, open a PR, squash merge once `ci` is green. `main` is protected.
 
 Companion HTTP API ground truth lives in `docs/companion-api.md`. If an endpoint is not there, it is not used.
+
+## Not a web app
+
+This is a stdio process launched by an MCP client. It has no HTTP output and must not be deployed to Vercel or any host. `vercel.json` disables Git deployments in case the GitHub integration attaches the repo again.

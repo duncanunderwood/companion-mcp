@@ -1,7 +1,7 @@
 # companion-mcp
 
 Purpose: MCP server wrapping the Bitfocus Companion 5.0.7 HTTP API for live-event use.
-Audience: single operator (Duncan, MyEvent Productions). Not a public package.
+Audience: a single operator per install. Not a public npm package, but anyone may clone and run it.
 
 ## Stack
 

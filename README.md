@@ -1,6 +1,6 @@
 # companion-mcp
 
-A small, security-gated [MCP](https://modelcontextprotocol.io) server that lets an LLM client (Claude Desktop, Claude Code, etc.) read state from and, when explicitly enabled, press allowlisted buttons on a [Bitfocus Companion](https://bitfocus.io/companion) 5.0.7 instance.
+A small, security-gated [MCP](https://modelcontextprotocol.io) server that lets any MCP client read state from and, when explicitly enabled, press allowlisted buttons on a [Bitfocus Companion](https://bitfocus.io/companion) 5.0.7 instance.
 
 Built for a single operator running live events. Not a public package.
 
@@ -33,10 +33,10 @@ Built for a single operator running live events. Not a public package.
 ## Install and build
 
 ```bash
-git clone git@github.com:duncanunderwood/companion-mcp.git
+git clone https://github.com/duncanunderwood/companion-mcp.git
 cd companion-mcp
-npm ci --ignore-scripts
-npx husky            # installs git hooks
+npm ci               # lifecycle scripts are disabled by .npmrc
+npx husky            # optional, installs git hooks for contributors
 npm run build        # emits dist/
 npm run check        # typecheck, lint, format, tests with coverage, audit, secrets
 ```
@@ -95,22 +95,22 @@ cp config/allowlist.example.json config/allowlist.json
 
 Every tool returns a one line text summary plus `structuredContent`. Refusals and errors are returned with `isError: true` and a plain reason, never a stack trace.
 
-## Claude Desktop configuration
+## MCP client configuration
 
-Edit `claude_desktop_config.json` (Settings, Developer, Edit Config). Use absolute paths.
+Any MCP client that can launch a stdio server works. Most clients use a JSON config of this shape (for example an `mcp.json` or your client's MCP settings file). Use absolute paths and replace `/abs/path/companion-mcp` with where you cloned the repo.
 
 ```json
 {
   "mcpServers": {
     "companion": {
       "command": "node",
-      "args": ["C:/Users/DuncanUnderwood/orca/projects/companion-mcp/dist/index.js"],
-      "cwd": "C:/Users/DuncanUnderwood/orca/projects/companion-mcp",
+      "args": ["/abs/path/companion-mcp/dist/index.js"],
+      "cwd": "/abs/path/companion-mcp",
       "env": {
         "COMPANION_URL": "http://127.0.0.1:8000",
         "COMPANION_ALLOW_WRITES": "false",
-        "COMPANION_ALLOWLIST_PATH": "C:/Users/DuncanUnderwood/orca/projects/companion-mcp/config/allowlist.json",
-        "COMPANION_LOG_DIR": "C:/Users/DuncanUnderwood/orca/projects/companion-mcp/logs",
+        "COMPANION_ALLOWLIST_PATH": "/abs/path/companion-mcp/config/allowlist.json",
+        "COMPANION_LOG_DIR": "/abs/path/companion-mcp/logs",
         "COMPANION_TIMEOUT_MS": "3000"
       }
     }
@@ -118,12 +118,14 @@ Edit `claude_desktop_config.json` (Settings, Developer, Edit Config). Use absolu
 }
 ```
 
-Writes are disabled in this shipped config on purpose. Flip `COMPANION_ALLOW_WRITES` to `"true"` only for the event, then flip it back.
+On Windows use forward slashes or escaped backslashes, for example `C:/Users/you/companion-mcp/dist/index.js`.
 
-For Claude Code:
+Writes are disabled in this config on purpose. Flip `COMPANION_ALLOW_WRITES` to `"true"` only for the event, then flip it back.
+
+You can also run it directly to confirm it starts (it waits for an MCP client on stdin, press Ctrl+C to exit):
 
 ```bash
-claude mcp add companion -e COMPANION_URL=http://127.0.0.1:8000 -e COMPANION_ALLOW_WRITES=false -- node /abs/path/companion-mcp/dist/index.js
+COMPANION_ALLOWLIST_PATH=./config/allowlist.json node dist/index.js
 ```
 
 ## Logs

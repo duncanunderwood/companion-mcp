@@ -27,12 +27,13 @@ export function registerReadTools(server: McpServer, ctx: AppContext): void {
       const data = {
         ok: true,
         writesEnabled: ctx.config.allowWrites,
+        configEditsEnabled: ctx.config.allowConfigEdits,
         companionHost: ctx.config.companionUrl.host,
         allowlistButtons: ctx.allowlist.buttons.length,
         allowlistVariables: ctx.allowlist.variables.length,
       };
       return Promise.resolve({
-        summary: `companion-mcp is running. Writes ${data.writesEnabled ? 'ENABLED' : 'disabled'}. Companion at ${data.companionHost}.`,
+        summary: `companion-mcp is running. Writes ${data.writesEnabled ? 'ENABLED' : 'disabled'}. Config edits ${data.configEditsEnabled ? 'ENABLED' : 'disabled'}. Companion at ${data.companionHost}.`,
         data,
       });
     }),
@@ -153,17 +154,18 @@ export function registerReadTools(server: McpServer, ctx: AppContext): void {
       const variables = [...ctx.allowlist.variables];
       const connections = [...ctx.allowlist.connections];
       const surfacesRescan = ctx.allowlist.surfaces_rescan;
+      const pagesCreate = ctx.allowlist.pages_create;
       const lines = buttons.map(
         (b) => `${String(b.page)}/${String(b.row)}/${String(b.column)} "${b.label}" risk=${b.risk}`,
       );
       return Promise.resolve({
         summary: [
-          `${String(buttons.length)} buttons, ${String(variables.length)} variables, ${String(connections.length)} connections, surface rescan ${surfacesRescan ? 'enabled' : 'disabled'}`,
+          `${String(buttons.length)} buttons, ${String(variables.length)} variables, ${String(connections.length)} connections, surface rescan ${surfacesRescan ? 'enabled' : 'disabled'}, page creation ${pagesCreate ? 'enabled' : 'disabled'}`,
           ...lines,
           ...(variables.length > 0 ? ['variables: ' + variables.join(', ')] : []),
           ...(connections.length > 0 ? ['connections: ' + connections.join(', ')] : []),
         ].join('\n'),
-        data: { buttons, variables, connections, surfacesRescan },
+        data: { buttons, variables, connections, surfacesRescan, pagesCreate },
       });
     }),
   );

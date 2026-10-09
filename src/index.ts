@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CompanionClient } from './companion-client.js';
+import { CompanionConfigClient } from './companion-config.js';
+import { TrpcClient } from './trpc-client.js';
 import { ConfigError, loadConfig } from './config.js';
 import { JsonlLogger } from './logger.js';
 import { AllowlistError, loadAllowlist } from './safety.js';
@@ -30,9 +32,12 @@ async function main(): Promise<void> {
     fail(startupMessage(err));
   }
   const client = new CompanionClient(config.companionUrl, config.timeoutMs);
-  const server = createServer({ config, client, logger, allowlist });
+  const configClient = new CompanionConfigClient(
+    new TrpcClient(config.companionUrl, config.timeoutMs),
+  );
+  const server = createServer({ config, client, configClient, logger, allowlist });
   process.stderr.write(
-    `companion-mcp: started. writes ${config.allowWrites ? 'ENABLED' : 'disabled'}, companion ${config.companionUrl.host}, ${String(allowlist.buttons.length)} allowlisted buttons\n`,
+    `companion-mcp: started. writes ${config.allowWrites ? 'ENABLED' : 'disabled'}, config edits ${config.allowConfigEdits ? 'ENABLED' : 'disabled'}, companion ${config.companionUrl.host}, ${String(allowlist.buttons.length)} allowlisted buttons\n`,
   );
   await server.connect(new StdioServerTransport());
 }

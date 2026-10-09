@@ -35,6 +35,7 @@ const allowlistSchema = z
     variables: z.array(z.string().regex(VARIABLE_NAME_RE)).max(500).default([]),
     connections: z.array(z.string().regex(CONNECTION_ID_RE)).max(500).default([]),
     surfaces_rescan: z.boolean().default(false),
+    pages_create: z.boolean().default(false),
   })
   .strict();
 
@@ -45,6 +46,7 @@ export interface Allowlist {
   readonly variables: readonly string[];
   readonly connections: readonly string[];
   readonly surfaces_rescan: boolean;
+  readonly pages_create: boolean;
 }
 
 export function locationKey(loc: ButtonLocation): string {
@@ -122,6 +124,12 @@ export function isConnectionAllowed(allowlist: Allowlist, id: string): boolean {
 export interface SafetyContext {
   readonly allowWrites: boolean;
   readonly allowlist: Allowlist;
+  /** Config edits (create/delete buttons, edit actions, create pages) via the internal API. */
+  readonly allowConfigEdits?: boolean;
+}
+
+export function isConfigEditEnabled(ctx: SafetyContext): boolean {
+  return ctx.allowWrites && ctx.allowConfigEdits === true;
 }
 
 export function isWriteEnabled(ctx: Pick<SafetyContext, 'allowWrites'>): boolean {
@@ -212,6 +220,68 @@ export function evaluateConnectionAction(
     return { allowed: false, reason: 'connection actions are high risk and require confirm: true' };
   }
   return { allowed: true, id, auth: new WriteAuthorisation(mintKey, { kind: 'connection', id }) };
+}
+
+const CONFIG_EDITS_DISABLED =
+  'config edits are disabled (needs COMPANION_ALLOW_WRITES=true and COMPANION_ALLOW_CONFIG_EDITS=true)';
+
+export type PagesDecision =
+  | { readonly allowed: true; readonly auth: WriteAuthorisation }
+  | { readonly allowed: false; readonly reason: string };
+
+/**
+ * Config edit on a button location. Same allowlist and risk rules as a press, plus the
+ * config-edit flag. Destructive edits (delete, remove entity) always require confirm.
+ */
+export function evaluateConfigEdit(
+  ctx: SafetyContext,
+  loc: ButtonLocation,
+  opts: { readonly confirm: boolean; readonly destructive: boolean },
+): PressDecision {
+  const entry = getButtonEntry(ctx.allowlist, loc);
+  if (entry === undefined) {
+    return { allowed: false, reason: `button ${locationKey(loc)} is not on the allowlist` };
+  }
+  if (!isConfigEditEnabled(ctx)) {
+    return { allowed: false, reason: CONFIG_EDITS_DISABLED };
+  }
+  if ((entry.risk === 'high' || opts.destructive) && !opts.confirm) {
+    return {
+      allowed: false,
+      reason: opts.destructive
+        ? `destructive edit of "${entry.label}" requires confirm: true`
+        : `button "${entry.label}" is high risk and requires confirm: true`,
+    };
+  }
+  return {
+    allowed: true,
+    entry,
+    auth: new WriteAuthorisation(mintKey, { kind: 'button', location: { ...loc } }),
+  };
+}
+
+export function evaluatePageCreate(
+  ctx: SafetyContext,
+  opts: { readonly confirm: boolean },
+): PagesDecision {
+  if (!ctx.allowlist.pages_create) {
+    return {
+      allowed: false,
+      reason: 'page creation is not enabled in the allowlist (pages_create)',
+    };
+  }
+  if (!isConfigEditEnabled(ctx)) {
+    return { allowed: false, reason: CONFIG_EDITS_DISABLED };
+  }
+  if (!opts.confirm) {
+    return { allowed: false, reason: 'page creation requires confirm: true' };
+  }
+  return { allowed: true, auth: new WriteAuthorisation(mintKey, { kind: 'pages' }) };
+}
+
+/** Reading button config uses the internal API, so it is tied to the config-edit flag. */
+export function isConfigReadEnabled(ctx: SafetyContext): boolean {
+  return ctx.allowConfigEdits === true;
 }
 
 export function evaluateSurfacesRescan(ctx: SafetyContext): SurfacesDecision {

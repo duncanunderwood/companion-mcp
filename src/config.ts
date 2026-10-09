@@ -14,6 +14,7 @@ const envBool = z
 const envSchema = z.object({
   COMPANION_URL: z.string().min(1).max(256).default('http://127.0.0.1:8000'),
   COMPANION_ALLOW_WRITES: envBool,
+  COMPANION_ALLOW_CONFIG_EDITS: envBool,
   COMPANION_ALLOW_REMOTE: envBool,
   COMPANION_ALLOWLIST_PATH: z.string().min(1).max(1024).default('./config/allowlist.json'),
   COMPANION_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(3000),
@@ -23,6 +24,7 @@ const envSchema = z.object({
 export interface Config {
   readonly companionUrl: URL;
   readonly allowWrites: boolean;
+  readonly allowConfigEdits: boolean;
   readonly allowRemote: boolean;
   readonly allowlistPath: string;
   readonly timeoutMs: number;
@@ -153,6 +155,7 @@ export function loadConfig(env: EnvSource = process.env, baseDir: string = proce
   return {
     companionUrl: validateCompanionUrl(e.COMPANION_URL, e.COMPANION_ALLOW_REMOTE),
     allowWrites: e.COMPANION_ALLOW_WRITES,
+    allowConfigEdits: e.COMPANION_ALLOW_CONFIG_EDITS,
     allowRemote: e.COMPANION_ALLOW_REMOTE,
     allowlistPath: resolveSafePath(e.COMPANION_ALLOWLIST_PATH, baseDir, '.json'),
     timeoutMs: e.COMPANION_TIMEOUT_MS,

@@ -10,8 +10,8 @@ stdio transport only. No web framework. No extra runtime dependencies without as
 
 ## Non-negotiable rules
 
-1. Only use endpoints listed in docs/companion-api.md. Never invent endpoints. If one is missing, stop and ask.
-2. Read-only by default. Writes require COMPANION_ALLOW_WRITES=true.
+1. Live-control tools use only endpoints listed in docs/companion-api.md. Config-edit tools (src/companion-config.ts) may use the internal tRPC procedures listed in that file's header, taken from Companion v5.0.7 source, and nothing else. Never invent endpoints or procedures. If one is missing, stop and ask.
+2. Read-only by default. Writes require COMPANION_ALLOW_WRITES=true. Config edits additionally require COMPANION_ALLOW_CONFIG_EDITS=true.
 3. Button presses only for locations on the allowlist (config/allowlist.json). Everything else is refused with a clear error.
 4. All write and press tools default to dry_run: true. A real action needs dry_run: false explicitly.
 5. High-risk allowlist entries also require confirm: true.

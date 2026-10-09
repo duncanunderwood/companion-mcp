@@ -33,7 +33,7 @@ Developed by MyEvent Labs. MIT licensed.
 - Every call is written to an audit log before it happens. If the log cannot be written, writes are refused.
 - It only talks to loopback or private network addresses unless you opt in to remote.
 - It opens no network port of its own. It is a local process your AI client launches over stdio.
-- It uses only the documented Companion 5.0.7 HTTP API (`docs/companion-api.md`), never the deprecated legacy endpoints or Companion's internal admin API. See [Companion command coverage](#companion-command-coverage).
+- Live control uses only the documented Companion 5.0.7 HTTP API (`docs/companion-api.md`), never the deprecated legacy endpoints. The optional config-edit tools use the internal admin API and are off unless you set a second flag. See [Companion command coverage](#companion-command-coverage).
 
 ## Requirements
 
@@ -131,7 +131,8 @@ Then add only buttons that really exist on your pages. Open each one in the Comp
   ],
   "variables": ["cue", "speaker_name"],
   "connections": ["replace-with-id-from-list_connections"],
-  "surfaces_rescan": false
+  "surfaces_rescan": false,
+  "pages_create": false
 }
 ```
 
@@ -144,6 +145,7 @@ Then add only buttons that really exist on your pages. Open each one in the Comp
 | `variables`       | Custom variable names the AI may set. Omit or leave empty to forbid all variable writes                                                     |
 | `connections`     | Connection ids (from `list_connections`) the AI may restart, enable or disable. Always needs `confirm: true`. Omit or leave empty to forbid |
 | `surfaces_rescan` | `true` to allow `rescan_surfaces`. Default `false`                                                                                          |
+| `pages_create`    | `true` to allow `create_page` (config-edit tool). Default `false`                                                                           |
 
 Rules: no duplicates, no unknown keys, names use letters, digits, `_` and `-` only. A missing or invalid file stops the server with a clear message.
 
@@ -310,14 +312,15 @@ Change `"COMPANION_ALLOW_WRITES": "false"` to `"true"` in the client config and 
 
 ## Environment variables
 
-| Variable                   | Default                   | Meaning                                                                                                    |
-| -------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `COMPANION_URL`            | `http://127.0.0.1:8000`   | Base URL of Companion. Scheme and host only, no path, query or credentials.                                |
-| `COMPANION_ALLOW_WRITES`   | `false`                   | Must be exactly `true` to enable `press_button` and `set_custom_variable`.                                 |
-| `COMPANION_ALLOW_REMOTE`   | `false`                   | Must be exactly `true` to allow a `COMPANION_URL` outside loopback, 10/8, 172.16/12, 192.168/16, fc00::/7. |
-| `COMPANION_ALLOWLIST_PATH` | `./config/allowlist.json` | Path to the allowlist. Relative paths must stay inside the working directory. Must end in `.json`.         |
-| `COMPANION_TIMEOUT_MS`     | `3000`                    | Per request timeout, 100 to 30000.                                                                         |
-| `COMPANION_LOG_DIR`        | `./logs`                  | Directory for the audit log.                                                                               |
+| Variable                       | Default                   | Meaning                                                                                                                                                                                        |
+| ------------------------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `COMPANION_URL`                | `http://127.0.0.1:8000`   | Base URL of Companion. Scheme and host only, no path, query or credentials.                                                                                                                    |
+| `COMPANION_ALLOW_WRITES`       | `false`                   | Must be exactly `true` to enable `press_button` and `set_custom_variable`.                                                                                                                     |
+| `COMPANION_ALLOW_CONFIG_EDITS` | `false`                   | Must be exactly `true` (together with `COMPANION_ALLOW_WRITES`) to enable the config-edit tools, which use Companion's internal API. See [Config-edit tools](#config-edit-tools-experimental). |
+| `COMPANION_ALLOW_REMOTE`       | `false`                   | Must be exactly `true` to allow a `COMPANION_URL` outside loopback, 10/8, 172.16/12, 192.168/16, fc00::/7.                                                                                     |
+| `COMPANION_ALLOWLIST_PATH`     | `./config/allowlist.json` | Path to the allowlist. Relative paths must stay inside the working directory. Must end in `.json`.                                                                                             |
+| `COMPANION_TIMEOUT_MS`         | `3000`                    | Per request timeout, 100 to 30000.                                                                                                                                                             |
+| `COMPANION_LOG_DIR`            | `./logs`                  | Directory for the audit log.                                                                                                                                                                   |
 
 Any invalid value, including an empty string, stops the server at startup with a message on stderr. It never falls back to a guess.
 
@@ -344,6 +347,52 @@ Every tool returns a one-line text summary plus structured data. Refusals and er
 A press result of `ok` means Companion accepted the request, not that the downstream device acted. Confirm by reading a variable back.
 
 All write tools share the same gates: writes enabled, on the allowlist, `dry_run: false`, `confirm: true` where required, one attempt, per-target cooldown, attempt line in the audit log first.
+
+## Config-edit tools (experimental)
+
+These five tools edit Companion's configuration rather than pressing things:
+
+| Tool            | Writes | Description                                                                                                                                   |
+| --------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_button`    | no     | Read a button's control id, type, feedbacks and actions (with entity ids and options).                                                        |
+| `create_button` | yes    | Create an empty button at an allowlisted location. Replaces anything already there, so always needs `confirm: true`.                          |
+| `delete_button` | yes    | Delete the button at an allowlisted location. Always needs `confirm: true`.                                                                   |
+| `update_button` | yes    | Apply operations in order: `add_action`, `add_feedback`, `set_options`, `remove_entity`. `remove_entity` makes the call need `confirm: true`. |
+| `create_page`   | yes    | Insert one or more empty pages at a position. Needs `"pages_create": true` in the allowlist and `confirm: true`.                              |
+
+They are different from the rest of the server in one important way: **the Companion HTTP API has no way to do any of this**, so they use Companion's internal admin API (the tRPC WebSocket at `/trpc` that the web UI uses). That API is undocumented and unauthenticated. The procedures and shapes used here were taken from the Companion 5.0.7 source and are checked against a mock built from that source, not against a live instance.
+
+Because of that:
+
+- They are off unless **both** `COMPANION_ALLOW_WRITES=true` and `COMPANION_ALLOW_CONFIG_EDITS=true`. `get_button` needs `COMPANION_ALLOW_CONFIG_EDITS=true`.
+- Button edits only work at locations already on the allowlist. High risk entries need `confirm: true` for every edit; destructive edits need it regardless.
+- Every response from Companion is validated. If a future Companion version changes the internal API, these tools fail with "unexpected shape" rather than guessing.
+- Run the verification below against a test Companion before using them on a rig. Treat them as experimental until you have.
+
+Notes for using them well:
+
+- Action and feedback definition ids (for example `program` or `tally`) come from the connection module. Companion's "Export" of a button or the module documentation shows them. `list_connections` gives the connection id.
+- New actions go to step 1 (id `0`), action set `down` unless you pass `set: "up" | "rotate_left" | "rotate_right"`.
+- `update_button` cannot change text or colours. Use `set_button_style` (documented HTTP API) for that.
+- Inserting a page renumbers every page after it. Allowlist entries on those pages then point at different buttons. Review the allowlist after `create_page`.
+- The reference implementation this was checked against used control type `button` and a `setStyleFields` procedure; both are wrong for 5.0.7 (`button-layered`, and style is layered elements). This server uses the 5.0.7 shapes.
+
+### Verifying the config-edit tools against a real Companion
+
+Do this once on a test instance, with an allowlist containing a `low` entry at a slot you can sacrifice (say page 1, row 3, column 7) and `"pages_create": true`.
+
+| Step | Action                                                                                           | Expected                                                                                             |
+| ---- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| 1    | Start with both flags `true`. `ping`.                                                            | `Config edits ENABLED`.                                                                              |
+| 2    | `get_button` on an empty slot, then on an existing button.                                       | `found: false`, then the button's control id and entities. Compare with the Companion editor.        |
+| 3    | `create_button` at the sacrificial slot with `dry_run: false, confirm: true`.                    | A new empty button appears in the Companion editor.                                                  |
+| 4    | `update_button` with one `add_action` for a connection you have.                                 | The action appears on the button's Down step in the editor. `get_button` lists it with an entity id. |
+| 5    | `update_button` with `set_options` on that entity id, then `remove_entity` with `confirm: true`. | Option changes in the editor, then the action disappears.                                            |
+| 6    | `set_button_style` text `TEST`.                                                                  | Text changes (this one is the HTTP API).                                                             |
+| 7    | `delete_button` with `confirm: true`.                                                            | Slot is empty in the editor.                                                                         |
+| 8    | `create_page` at the end (`as_page_number` = page count + 1) with one name, `confirm: true`.     | New page appears. Delete it in the Companion UI afterwards.                                          |
+
+If any step reports "unexpected shape" or "Companion rejected", stop and open an issue with the Companion version; the internal API has moved.
 
 ## Companion command coverage
 
@@ -377,7 +426,7 @@ Commands that exist only on other transports and therefore are not available her
 | `CUSTOM-VARIABLE <name> GET-VALUE`                     | TCP/UDP       | Same as HTTP `get_custom_variable`, already covered  |
 | Art-Net, Ember+, RossTalk, Satellite                   | own protocols | Device and surface integration, not control commands |
 
-Things the Companion HTTP API cannot do at all, so neither can this server: list pages, list buttons, read a button's actions or feedbacks, list variables, create variables, edit triggers, or change surfaces. Those live only in Companion's internal admin API, which is undocumented and unauthenticated, and this project deliberately stays off it.
+Things the Companion HTTP API cannot do at all: list pages, list buttons, read or edit a button's actions and feedbacks, create or delete buttons and pages, list or create variables, edit triggers. The five [config-edit tools](#config-edit-tools-experimental) cover the button and page subset of that through the internal admin API, behind their own flag. Everything else (variables listing, triggers, surfaces, presets) is deliberately not implemented.
 
 ## Logs
 
@@ -410,6 +459,7 @@ Things the Companion HTTP API cannot do at all, so neither can this server: list
 5. Dry run every button you plan to use (`press_button` with the default `dry_run: true`) and check the labels.
 6. Check the log directory is writable and has free space.
 7. Run `ping` from the client and confirm it reports the expected write state and host.
+8. Leave `COMPANION_ALLOW_CONFIG_EDITS` unset or `false` during a show. Config edits are for build days, not show days.
 
 ## Manual test script
 

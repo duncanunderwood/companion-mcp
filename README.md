@@ -1,68 +1,123 @@
 # companion-mcp
 
-A small, security-gated [MCP](https://modelcontextprotocol.io) server that lets any MCP client read state from and, when explicitly enabled, press allowlisted buttons on a [Bitfocus Companion](https://bitfocus.io/companion) 5.0.7 instance.
+A small, security-gated [MCP](https://modelcontextprotocol.io) server for [Bitfocus Companion](https://bitfocus.io/companion). It lets any MCP-capable AI client read show state from Companion and, only when you explicitly enable it, press buttons and set variables that you have put on an allowlist.
 
-Built for a single operator running live events. Not a public package.
+Built for live-event operators who want AI assistance at the desk without handing an AI the whole rig.
 
-## What it does
+Developed by MyEvent Labs. MIT licensed.
 
-- Reads custom variables, module variables and connection status.
-- Presses buttons that are on an operator-maintained allowlist.
-- Sets custom variables that are on the allowlist.
-- Logs every tool call to a JSON lines file.
+## Contents
 
-## What it deliberately does not do
+- [How it protects your show](#how-it-protects-your-show)
+- [Requirements](#requirements)
+- [Install](#install)
+- [Configure Companion](#configure-companion)
+- [Configure the allowlist](#configure-the-allowlist)
+- [Connect your AI client](#connect-your-ai-client)
+- [Environment variables](#environment-variables)
+- [Tools](#tools)
+- [Logs](#logs)
+- [Pre-show checklist](#pre-show-checklist)
+- [Manual test script](#manual-test-script)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
 
-- It will not press any button that is not on the allowlist, no matter what the model asks.
-- It will not write anything unless `COMPANION_ALLOW_WRITES=true`.
-- It will not act unless the model passes `dry_run: false` explicitly. Dry run is the default.
-- It will not press a high risk button without `confirm: true`.
-- It never retries a press or a write. On timeout, connection reset or a 5xx after a write it reports "outcome unknown".
-- It refuses a second write to the same button or variable while one is in flight, and for 2 seconds after.
-- It refuses writes if the audit log cannot be written. An "attempt" line is logged before every real write.
-- It never talks to a non-private address unless `COMPANION_ALLOW_REMOTE=true`.
-- It never opens a network socket of its own. stdio transport only.
-- It does not change button styles, restart connections, rescan surfaces or use the deprecated legacy API.
+## How it protects your show
+
+- Read-only by default. Nothing is written unless `COMPANION_ALLOW_WRITES=true`.
+- Only buttons and variables on your allowlist can ever be written. Everything else is refused, whatever the AI asks.
+- Every write defaults to a dry run. The AI must pass `dry_run: false` to act.
+- Buttons you mark `high` risk also need `confirm: true`.
+- One attempt, never retried. On timeout, reset or server error it reports "outcome unknown" instead of guessing.
+- The same button or variable cannot be written twice within 2 seconds, or while a write is in flight.
+- Every call is written to an audit log before it happens. If the log cannot be written, writes are refused.
+- It only talks to loopback or private network addresses unless you opt in to remote.
+- It opens no network port of its own. It is a local process your AI client launches over stdio.
+- It uses only the documented Companion 5.0.7 HTTP API (`docs/companion-api.md`). No style changes, connection restarts, surface rescans or legacy endpoints.
 
 ## Requirements
 
-- Node 22 or later
-- Companion 5.0.7 with Settings, HTTP, "HTTP API" enabled
-- [gitleaks](https://github.com/gitleaks/gitleaks) on PATH for the local secret scan (`npm run secrets` and the pre-commit hook)
+- Node.js 22 or later (`node --version`)
+- Bitfocus Companion 5.0.7 running on the same machine or your private network
+- An MCP client (desktop AI app or IDE) that can launch a local stdio server
 
-## Install and build
+Git and a terminal. No global installs, no database, no cloud account.
+
+## Install
+
+### One line
+
+The installer clones to `~/companion-mcp`, builds, creates a starter allowlist, checks the server starts, and prints the client config with your paths filled in. Review the script first if you like: `scripts/install.sh` and `scripts/install.ps1`.
+
+macOS and Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/duncanunderwood/companion-mcp/main/scripts/install.sh | bash
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/duncanunderwood/companion-mcp/main/scripts/install.ps1 | iex
+```
+
+Set `COMPANION_MCP_DIR` to install somewhere else, or `COMPANION_URL` if Companion is not on `127.0.0.1:8000`.
+
+### Let an AI agent do it
+
+If you use an AI assistant with terminal access (any coding agent or desktop assistant that can run commands), paste this:
+
+```
+Install companion-mcp by running the installer from
+https://github.com/duncanunderwood/companion-mcp (scripts/install.sh on macOS/Linux,
+scripts/install.ps1 on Windows). Then add the JSON it prints to my MCP client config
+and tell me where you put it. Leave COMPANION_ALLOW_WRITES set to "false".
+```
+
+### Manual
 
 ```bash
 git clone https://github.com/duncanunderwood/companion-mcp.git
 cd companion-mcp
-npm ci               # lifecycle scripts are disabled by .npmrc
-npx husky            # optional, installs git hooks for contributors
-npm run build        # emits dist/
-npm run check        # typecheck, lint, format, tests with coverage, audit, secrets
+npm ci
+npm run build
 ```
 
-## Configuration
+Confirm the build produced `dist/index.js`:
 
-Environment variables, all optional:
+```bash
+node dist/index.js
+# companion-mcp: allowlist file is missing or unreadable
+```
 
-| Variable                   | Default                   | Meaning                                                                                                    |
-| -------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `COMPANION_URL`            | `http://127.0.0.1:8000`   | Base URL of Companion. Scheme and host only, no path, query or credentials.                                |
-| `COMPANION_ALLOW_WRITES`   | `false`                   | Must be exactly `true` to enable `press_button` and `set_custom_variable`.                                 |
-| `COMPANION_ALLOW_REMOTE`   | `false`                   | Must be exactly `true` to allow a `COMPANION_URL` outside loopback, 10/8, 172.16/12, 192.168/16, fc00::/7. |
-| `COMPANION_ALLOWLIST_PATH` | `./config/allowlist.json` | Path to the allowlist. Relative paths must stay inside the working directory. Must end in `.json`.         |
-| `COMPANION_TIMEOUT_MS`     | `3000`                    | Per request timeout, 100 to 30000.                                                                         |
-| `COMPANION_LOG_DIR`        | `./logs`                  | Directory for `companion-mcp.jsonl`. Rotates at 5 MB, keeps one backup.                                    |
+That error is expected at this point. It means the server starts and refuses to run without an allowlist. Continue with the next two sections.
 
-Any invalid value, including an empty string, stops the server at startup. It never falls back to a guess.
+Note the absolute path to the folder. You will need it for the client config, for example `/home/you/companion-mcp` or `C:/Users/you/companion-mcp`.
 
-### Allowlist
+## Configure Companion
 
-`config/allowlist.json` is git-ignored because it reveals your rig layout. Copy the example and edit it:
+1. Open the Companion web UI.
+2. Go to Settings, then HTTP.
+3. Enable **HTTP API**. Leave the legacy API disabled.
+4. Note the port shown under Admin UI (default `8000`).
+
+Test from a terminal on the same machine (replace `cue` with any custom variable you have):
+
+```bash
+curl http://127.0.0.1:8000/api/custom-variable/cue/value
+```
+
+You should see the value, or `Not found` if the variable does not exist. A `403` means the HTTP API is still disabled.
+
+## Configure the allowlist
+
+The allowlist is the list of things the AI is permitted to write. It lives at `config/allowlist.json`, which is git-ignored so your rig layout is never committed.
 
 ```bash
 cp config/allowlist.example.json config/allowlist.json
 ```
+
+Edit it to match your Companion pages:
 
 ```json
 {
@@ -76,28 +131,27 @@ cp config/allowlist.example.json config/allowlist.json
 }
 ```
 
-- `buttons`: page 1 to 99, row and column 0 to 31, label up to 80 characters, risk `low` or `high`. Duplicates are rejected.
-- `variables`: custom variable names (letters, digits, `_`, `-`) that `set_custom_variable` may write. Omit or leave empty to forbid all variable writes.
-- Unknown keys anywhere are rejected. A missing or invalid file stops the server.
+| Field           | Meaning                                                                                 |
+| --------------- | --------------------------------------------------------------------------------------- |
+| `page`          | Companion page number, 1 to 99                                                          |
+| `row`, `column` | 0-based grid position as shown in the Companion button editor, 0 to 31                  |
+| `label`         | Your own description, shown back to the AI and written to the log                       |
+| `risk`          | `low` acts on `dry_run: false`. `high` additionally requires `confirm: true`            |
+| `variables`     | Custom variable names the AI may set. Omit or leave empty to forbid all variable writes |
 
-## Tools
+Rules: no duplicates, no unknown keys, names use letters, digits, `_` and `-` only. A missing or invalid file stops the server with a clear message.
 
-| Tool                    | Writes | Description                                                                                           |
-| ----------------------- | ------ | ----------------------------------------------------------------------------------------------------- |
-| `ping`                  | no     | Liveness, reports whether writes are enabled. No Companion request.                                   |
-| `get_custom_variable`   | no     | Read `$(custom:name)`.                                                                                |
-| `get_module_variable`   | no     | Read `$(label:name)` from a connection.                                                               |
-| `list_connections`      | no     | All connections with status.                                                                          |
-| `get_connection_status` | no     | One connection by id.                                                                                 |
-| `list_allowlist`        | no     | Shows what `press_button` and `set_custom_variable` may touch.                                        |
-| `press_button`          | yes    | Press and release an allowlisted button. `dry_run` defaults to true. High risk needs `confirm: true`. |
-| `set_custom_variable`   | yes    | Set an allowlisted custom variable to a text value. `dry_run` defaults to true.                       |
+Start with 3 or 4 entries. Add more once you trust the workflow.
 
-Every tool returns a one line text summary plus `structuredContent`. Refusals and errors are returned with `isError: true` and a plain reason, never a stack trace.
+## Connect your AI client
 
-## MCP client configuration
+Every MCP client needs the same three things: the command to launch (`node`), the path to `dist/index.js`, and environment variables. Writes are left disabled in all examples below on purpose.
 
-Any MCP client that can launch a stdio server works. Most clients use a JSON config of this shape (for example an `mcp.json` or your client's MCP settings file). Use absolute paths and replace `/abs/path/companion-mcp` with where you cloned the repo.
+Replace `/abs/path/companion-mcp` with your real path. On Windows use forward slashes (`C:/Users/you/companion-mcp`) or doubled backslashes.
+
+### Generic JSON config (most desktop apps and IDEs)
+
+Many clients read a JSON file with an `mcpServers` object. Add this block:
 
 ```json
 {
@@ -110,31 +164,100 @@ Any MCP client that can launch a stdio server works. Most clients use a JSON con
         "COMPANION_URL": "http://127.0.0.1:8000",
         "COMPANION_ALLOW_WRITES": "false",
         "COMPANION_ALLOWLIST_PATH": "/abs/path/companion-mcp/config/allowlist.json",
-        "COMPANION_LOG_DIR": "/abs/path/companion-mcp/logs",
-        "COMPANION_TIMEOUT_MS": "3000"
+        "COMPANION_LOG_DIR": "/abs/path/companion-mcp/logs"
       }
     }
   }
 }
 ```
 
-On Windows use forward slashes or escaped backslashes, for example `C:/Users/you/companion-mcp/dist/index.js`.
+If your client has no `cwd` field, keep the absolute paths in `env` and it will work anyway.
 
-Writes are disabled in this config on purpose. Flip `COMPANION_ALLOW_WRITES` to `"true"` only for the event, then flip it back.
+### Claude Desktop
 
-You can also run it directly to confirm it starts (it waits for an MCP client on stdin, press Ctrl+C to exit):
+Settings, Developer, Edit Config. Paste the generic block into `claude_desktop_config.json`, save, fully quit and reopen the app. The tools appear under the tools icon in a chat.
 
-```bash
-COMPANION_ALLOWLIST_PATH=./config/allowlist.json node dist/index.js
-```
+### Cursor
 
-## Logs
+Settings, MCP, Add new global MCP server. Paste the generic block into `~/.cursor/mcp.json` (or `.cursor/mcp.json` inside a project). Toggle the server on.
 
-`logs/companion-mcp.jsonl`, one object per line:
+### VS Code (Copilot agent mode)
+
+Create `.vscode/mcp.json` in a workspace:
 
 ```json
 {
-  "ts": "2026-10-09T10:00:00.000Z",
+  "servers": {
+    "companion": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/abs/path/companion-mcp/dist/index.js"],
+      "env": {
+        "COMPANION_URL": "http://127.0.0.1:8000",
+        "COMPANION_ALLOW_WRITES": "false",
+        "COMPANION_ALLOWLIST_PATH": "/abs/path/companion-mcp/config/allowlist.json",
+        "COMPANION_LOG_DIR": "/abs/path/companion-mcp/logs"
+      }
+    }
+  }
+}
+```
+
+### Windsurf, Cline, Zed and others
+
+These use the generic `mcpServers` shape or a close variant. Look for "MCP servers" in the client settings, choose "stdio" or "command" type, and copy the command, args and env from the generic block.
+
+### Verify the connection
+
+Ask your AI client to run the `ping` tool. You should get:
+
+```
+companion-mcp is running. Writes disabled. Companion at 127.0.0.1:8000.
+```
+
+Then ask it to run `list_allowlist` and check your buttons are listed.
+
+### Enabling writes for a show
+
+Change `"COMPANION_ALLOW_WRITES": "false"` to `"true"` in the client config and restart the client. `ping` will now say `Writes ENABLED`. Set it back to `"false"` after the event.
+
+## Environment variables
+
+| Variable                   | Default                   | Meaning                                                                                                    |
+| -------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `COMPANION_URL`            | `http://127.0.0.1:8000`   | Base URL of Companion. Scheme and host only, no path, query or credentials.                                |
+| `COMPANION_ALLOW_WRITES`   | `false`                   | Must be exactly `true` to enable `press_button` and `set_custom_variable`.                                 |
+| `COMPANION_ALLOW_REMOTE`   | `false`                   | Must be exactly `true` to allow a `COMPANION_URL` outside loopback, 10/8, 172.16/12, 192.168/16, fc00::/7. |
+| `COMPANION_ALLOWLIST_PATH` | `./config/allowlist.json` | Path to the allowlist. Relative paths must stay inside the working directory. Must end in `.json`.         |
+| `COMPANION_TIMEOUT_MS`     | `3000`                    | Per request timeout, 100 to 30000.                                                                         |
+| `COMPANION_LOG_DIR`        | `./logs`                  | Directory for the audit log.                                                                               |
+
+Any invalid value, including an empty string, stops the server at startup with a message on stderr. It never falls back to a guess.
+
+## Tools
+
+| Tool                    | Writes | Description                                                                                                 |
+| ----------------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| `ping`                  | no     | Liveness. Reports whether writes are enabled. No Companion request.                                         |
+| `get_custom_variable`   | no     | Read `$(custom:name)`.                                                                                      |
+| `get_module_variable`   | no     | Read `$(label:name)` from a connection.                                                                     |
+| `list_connections`      | no     | All connections with status.                                                                                |
+| `get_connection_status` | no     | One connection by id.                                                                                       |
+| `list_allowlist`        | no     | Shows what `press_button` and `set_custom_variable` may touch.                                              |
+| `press_button`          | yes    | Press and release an allowlisted button. `dry_run` defaults to true. High risk needs `confirm: true`.       |
+| `set_custom_variable`   | yes    | Set an allowlisted custom variable to a non-blank text value (1 to 1000 chars). `dry_run` defaults to true. |
+
+Every tool returns a one-line text summary plus structured data. Refusals and errors come back as errors with a plain reason, never a stack trace.
+
+A press result of `ok` means Companion accepted the request, not that the downstream device acted. Confirm by reading a variable back.
+
+## Logs
+
+`<COMPANION_LOG_DIR>/companion-mcp.jsonl`, one JSON object per line:
+
+```json
+{
+  "ts": "2026-01-01T10:00:00.000Z",
   "tool": "press_button",
   "args": { "page": 1, "row": 0, "column": 0, "dry_run": false, "confirm": false },
   "outcome": "ok",
@@ -145,21 +268,24 @@ COMPANION_ALLOWLIST_PATH=./config/allowlist.json node dist/index.js
 }
 ```
 
-`outcome` is `attempt`, `ok`, `refused` or `error`. Variable values are never logged (reads log only the name, writes log only the length). Argument keys that look like secrets are redacted, `detail` is clipped to 200 characters. The file is created mode 0600 and rotates at 5 MB keeping 5 backups. The environment is never logged.
+- `outcome` is `attempt` (written before a real write), `ok`, `refused` or `error`.
+- Variable values are never logged. Reads log the name only, writes log the length only.
+- Argument keys that look like secrets are redacted. `detail` is clipped to 200 characters.
+- The file is created with mode 0600, rotates at 5 MB and keeps 5 backups. The environment is never logged.
 
 ## Pre-show checklist
 
-1. Confirm the Companion version is 5.0.7 and matches `docs/companion-api.md`.
+1. Confirm Companion is 5.0.7 and the HTTP API is enabled.
 2. Review `config/allowlist.json` against the current page layout. Rearranged buttons make labels stale.
-3. Confirm `COMPANION_URL` points at the intended instance, not a test machine.
-4. Enable writes (`COMPANION_ALLOW_WRITES=true`) only for the event, and disable afterwards.
+3. Confirm `COMPANION_URL` points at the show instance, not a test machine.
+4. Enable writes only for the event, and disable afterwards.
 5. Dry run every button you plan to use (`press_button` with the default `dry_run: true`) and check the labels.
-6. Check `logs/` is writable and that rotation has left a sane file size.
+6. Check the log directory is writable and has free space.
 7. Run `ping` from the client and confirm it reports the expected write state and host.
 
 ## Manual test script
 
-Run against a test Companion instance, never the show network. Prepare: a button at page 1 row 0 column 0 with a harmless action, a custom variable named `cue`, and an allowlist containing both (button risk `low`) plus a second entry at 1/3/7 with risk `high`.
+Run against a test Companion instance, never the show network. Prepare a button at page 1 row 0 column 0 with a harmless action, a custom variable named `cue`, and an allowlist containing both (button risk `low`) plus a second entry at 1/3/7 with risk `high`.
 
 | Step | Action                                                                                                                         | Expected                                                                                       |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
@@ -167,26 +293,42 @@ Run against a test Companion instance, never the show network. Prepare: a button
 | 2    | `get_custom_variable` name `cue`.                                                                                              | `found: true` with the current value.                                                          |
 | 3    | `get_custom_variable` name `does_not_exist`.                                                                                   | `found: false`, not an error.                                                                  |
 | 4    | `press_button` 1/0/0 with `dry_run: false`.                                                                                    | Refused: writes are disabled. Nothing happens in Companion. Log line has `outcome: "refused"`. |
-| 5    | Restart with `COMPANION_ALLOW_WRITES=true`. `press_button` 1/0/0 (no `dry_run` given).                                         | `DRY RUN` summary naming the label. Nothing happens in Companion.                              |
+| 5    | Restart with writes enabled. `press_button` 1/0/0 with no `dry_run` given.                                                     | `DRY RUN` summary naming the label. Nothing happens in Companion.                              |
 | 6    | `press_button` 1/0/0 with `dry_run: false`.                                                                                    | Summary `pressed ...`. The button fires in Companion.                                          |
 | 7    | `press_button` 1/3/7 with `dry_run: false` and no `confirm`. Then with `confirm: true`.                                        | First refused (requires confirm). Second fires.                                                |
 | 8    | `press_button` 2/0/0 with `dry_run: false`. Then `set_custom_variable` `cue` to `test` with `dry_run: false` and read it back. | Press refused (not on allowlist). Variable updated and `get_custom_variable` returns `test`.   |
 
-Finish by setting `COMPANION_ALLOW_WRITES=false` again.
+Finish by disabling writes again.
+
+## Troubleshooting
+
+| Symptom                                             | Cause and fix                                                                                                                                                         |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `allowlist file is missing or unreadable`           | Copy `config/allowlist.example.json` to `config/allowlist.json`, or set `COMPANION_ALLOWLIST_PATH` to an absolute path.                                               |
+| `COMPANION_URL must be loopback or a private range` | Companion is on a public address. Use its private LAN address, or set `COMPANION_ALLOW_REMOTE=true` if you understand the risk.                                       |
+| `Companion HTTP API is disabled (403)`              | Enable HTTP API in Companion Settings, HTTP.                                                                                                                          |
+| `could not reach Companion`                         | Wrong host or port, Companion not running, or a firewall. Test with `curl` as shown above.                                                                            |
+| `unexpected Companion response 404` on a read       | Something other than Companion is answering on that port, or the Companion version differs. Check the port in Companion settings.                                     |
+| `Companion reports no button at ...`                | The allowlist entry points at an empty cell. Fix the page/row/column.                                                                                                 |
+| Tools do not appear in the client                   | Paths in the config are not absolute, or the client was not fully restarted. Run `node /abs/path/companion-mcp/dist/index.js` in a terminal to see the startup error. |
+| `audit log is not writable`                         | `COMPANION_LOG_DIR` does not exist or is read-only.                                                                                                                   |
 
 ## Development
 
 ```bash
 npm test                 # vitest
-npm run test:coverage    # with thresholds (85% lines overall, 90% on src/safety.ts)
+npm run test:coverage    # with thresholds
 npm run lint
-npm run check            # everything CI runs
+npm run check            # everything CI runs: typecheck, lint, format, build, tests, audit, secret scan
+npx husky                # optional: install pre-commit and pre-push hooks
 ```
 
-Work on a branch per phase, open a PR, squash merge once `ci` is green. `main` is protected.
+`npm run secrets` and the pre-commit hook need [gitleaks](https://github.com/gitleaks/gitleaks) on your PATH.
 
-Companion HTTP API ground truth lives in `docs/companion-api.md`. If an endpoint is not there, it is not used.
+Companion HTTP API ground truth lives in `docs/companion-api.md`. If an endpoint is not there, it is not used. Contribution rules for humans and AI agents are in `AGENTS.md`.
 
-## Not a web app
+This is a stdio process launched by an MCP client. It has no web output and is not meant to be hosted anywhere.
 
-This is a stdio process launched by an MCP client. It has no HTTP output and must not be deployed to Vercel or any host. `vercel.json` disables Git deployments in case the GitHub integration attaches the repo again.
+## Credits
+
+Developed by MyEvent Labs. Companion is a product of Bitfocus AS; this project is not affiliated with or endorsed by Bitfocus.

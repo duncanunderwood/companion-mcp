@@ -1,0 +1,163 @@
+import { readFileSync } from 'node:fs';
+import { z } from 'zod';
+import {
+  COLUMN_MAX,
+  COLUMN_MIN,
+  PAGE_MAX,
+  PAGE_MIN,
+  ROW_MAX,
+  ROW_MIN,
+  VARIABLE_NAME_RE,
+  type ButtonLocation,
+} from './companion-client.js';
+
+export class AllowlistError extends Error {
+  override readonly name = 'AllowlistError';
+}
+
+const MAX_ALLOWLIST_BYTES = 256 * 1024;
+
+const buttonEntrySchema = z
+  .object({
+    page: z.number().int().min(PAGE_MIN).max(PAGE_MAX),
+    row: z.number().int().min(ROW_MIN).max(ROW_MAX),
+    column: z.number().int().min(COLUMN_MIN).max(COLUMN_MAX),
+    label: z.string().min(1).max(80),
+    risk: z.enum(['low', 'high']),
+  })
+  .strict();
+
+const allowlistSchema = z
+  .object({
+    buttons: z.array(buttonEntrySchema).max(500),
+    variables: z.array(z.string().regex(VARIABLE_NAME_RE)).max(500).default([]),
+  })
+  .strict();
+
+export type ButtonEntry = z.infer<typeof buttonEntrySchema>;
+
+export interface Allowlist {
+  readonly buttons: readonly ButtonEntry[];
+  readonly variables: readonly string[];
+}
+
+export function locationKey(loc: ButtonLocation): string {
+  return `${String(loc.page)}/${String(loc.row)}/${String(loc.column)}`;
+}
+
+export function parseAllowlist(text: string): Allowlist {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new AllowlistError('allowlist is not valid JSON');
+  }
+  const parsed = allowlistSchema.safeParse(raw);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    throw new AllowlistError(`allowlist is invalid: ${issues}`);
+  }
+  const seen = new Set<string>();
+  for (const entry of parsed.data.buttons) {
+    const key = locationKey(entry);
+    if (seen.has(key)) {
+      throw new AllowlistError(`allowlist has a duplicate button entry at ${key}`);
+    }
+    seen.add(key);
+  }
+  const vars = new Set<string>();
+  for (const name of parsed.data.variables) {
+    if (vars.has(name)) {
+      throw new AllowlistError(`allowlist has a duplicate variable entry ${name}`);
+    }
+    vars.add(name);
+  }
+  return parsed.data;
+}
+
+export function loadAllowlist(filePath: string): Allowlist {
+  let text: string;
+  try {
+    text = readFileSync(filePath, { encoding: 'utf8' });
+  } catch {
+    throw new AllowlistError('allowlist file is missing or unreadable');
+  }
+  if (text.length > MAX_ALLOWLIST_BYTES) {
+    throw new AllowlistError('allowlist file is too large');
+  }
+  return parseAllowlist(text);
+}
+
+export function getButtonEntry(allowlist: Allowlist, loc: ButtonLocation): ButtonEntry | undefined {
+  return allowlist.buttons.find(
+    (b) => b.page === loc.page && b.row === loc.row && b.column === loc.column,
+  );
+}
+
+export function isButtonAllowed(allowlist: Allowlist, loc: ButtonLocation): boolean {
+  return getButtonEntry(allowlist, loc) !== undefined;
+}
+
+export function isVariableAllowed(allowlist: Allowlist, name: string): boolean {
+  return allowlist.variables.includes(name);
+}
+
+export interface SafetyContext {
+  readonly allowWrites: boolean;
+  readonly allowlist: Allowlist;
+}
+
+export function isWriteEnabled(ctx: Pick<SafetyContext, 'allowWrites'>): boolean {
+  return ctx.allowWrites;
+}
+
+export type PressDecision =
+  | { readonly allowed: true; readonly entry: ButtonEntry }
+  | { readonly allowed: false; readonly reason: string };
+
+export type VariableDecision =
+  | { readonly allowed: true; readonly name: string }
+  | { readonly allowed: false; readonly reason: string };
+
+export function evaluatePress(
+  ctx: SafetyContext,
+  loc: ButtonLocation,
+  opts: { readonly confirm: boolean },
+): PressDecision {
+  const entry = getButtonEntry(ctx.allowlist, loc);
+  if (entry === undefined) {
+    return {
+      allowed: false,
+      reason: `button ${locationKey(loc)} is not on the allowlist`,
+    };
+  }
+  if (!isWriteEnabled(ctx)) {
+    return {
+      allowed: false,
+      reason: 'writes are disabled (COMPANION_ALLOW_WRITES is not true)',
+    };
+  }
+  if (entry.risk === 'high' && !opts.confirm) {
+    return {
+      allowed: false,
+      reason: `button "${entry.label}" is high risk and requires confirm: true`,
+    };
+  }
+  return { allowed: true, entry };
+}
+
+export function evaluateSetVariable(ctx: SafetyContext, name: string): VariableDecision {
+  if (!VARIABLE_NAME_RE.test(name)) {
+    return { allowed: false, reason: 'variable name is invalid' };
+  }
+  if (!isVariableAllowed(ctx.allowlist, name)) {
+    return { allowed: false, reason: `variable "${name}" is not on the allowlist` };
+  }
+  if (!isWriteEnabled(ctx)) {
+    return {
+      allowed: false,
+      reason: 'writes are disabled (COMPANION_ALLOW_WRITES is not true)',
+    };
+  }
+  return { allowed: true, name };
+}

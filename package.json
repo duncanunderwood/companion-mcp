@@ -48,5 +48,7 @@
     "*.{json,md,yml}": [
       "prettier --write"
     ]
-  }
+  },
+  "author": "MyEvent Labs",
+  "license": "MIT"
 }

@@ -6,8 +6,11 @@ import { connectionIdSchema, connectionLabelSchema, variableNameSchema } from '.
 
 const emptySchema = z.object({}).strict();
 
+const MAX_SUMMARY_VALUE = 2000;
+
 function formatValue(value: unknown): string {
-  return typeof value === 'string' ? value : JSON.stringify(value);
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return text.length > MAX_SUMMARY_VALUE ? text.slice(0, MAX_SUMMARY_VALUE) + '...' : text;
 }
 
 export function registerReadTools(server: McpServer, ctx: AppContext): void {
@@ -52,6 +55,7 @@ export function registerReadTools(server: McpServer, ctx: AppContext): void {
       return {
         summary: `custom:${name} = ${formatValue(result.value)}`,
         data: { name, found: true, value: result.value },
+        logDetail: `custom:${name} found`,
       };
     }),
   );
@@ -81,6 +85,7 @@ export function registerReadTools(server: McpServer, ctx: AppContext): void {
         return {
           summary: `${connection_label}:${name} = ${formatValue(result.value)}`,
           data: { connectionLabel: connection_label, name, found: true, value: result.value },
+          logDetail: `${connection_label}:${name} found`,
         };
       },
     ),
@@ -107,6 +112,7 @@ export function registerReadTools(server: McpServer, ctx: AppContext): void {
             ? 'no connections configured'
             : `${String(connections.length)} connections\n${lines.join('\n')}`,
         data: { connections },
+        logDetail: `${String(connections.length)} connections`,
       };
     }),
   );

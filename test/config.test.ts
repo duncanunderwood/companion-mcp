@@ -21,6 +21,9 @@ describe('isPrivateHost', () => {
     ['8.8.8.8', false],
     ['[::1]', true],
     ['::1', true],
+    ['[::ffff:a00:1]', true],
+    ['[::ffff:10.0.0.1]', true],
+    ['[::ffff:808:808]', false],
     ['[fd00::1]', true],
     ['[2001:db8::1]', false],
     ['example.com', false],
@@ -68,6 +71,9 @@ describe('loadConfig', () => {
     expect(c.allowRemote).toBe(false);
     expect(c.timeoutMs).toBe(3000);
     expect(c.companionUrl.href).toBe('http://127.0.0.1:8000/');
+  });
+  it('treats an empty string as invalid rather than default', () => {
+    expect(() => loadConfig({ COMPANION_URL: '' }, base)).toThrow(ConfigError);
   });
   it('fails closed on bad values', () => {
     expect(() => loadConfig({ COMPANION_ALLOW_WRITES: 'yes' }, base)).toThrow(ConfigError);

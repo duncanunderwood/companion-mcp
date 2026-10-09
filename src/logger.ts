@@ -1,16 +1,17 @@
-import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 export const MAX_LOG_BYTES = 5 * 1024 * 1024;
+export const LOG_BACKUPS = 5;
 const MAX_STRING = 200;
 const MAX_DEPTH = 4;
 const MAX_KEYS = 50;
-const SECRET_KEY_RE = /(token|secret|password|passwd|key|auth|credential|cookie)/i;
+const SECRET_KEY_RE = /(token|secret|password|passwd|key|auth|credential|cookie|^value$)/i;
 
 export interface LogEntry {
   readonly tool: string;
   readonly args: unknown;
-  readonly outcome: 'ok' | 'error' | 'refused';
+  readonly outcome: 'ok' | 'error' | 'refused' | 'attempt';
   readonly allowed: boolean;
   readonly dryRun?: boolean;
   readonly detail?: string;
@@ -18,7 +19,12 @@ export interface LogEntry {
 }
 
 export interface Logger {
-  log(entry: LogEntry): void;
+  /** Returns false if the entry could not be persisted. Callers gating writes must check it. */
+  log(entry: LogEntry): boolean;
+}
+
+export function clip(text: string, max = MAX_STRING): string {
+  return text.length > max ? text.slice(0, max) + '...' : text;
 }
 
 export function sanitise(value: unknown, depth = 0): unknown {
@@ -26,7 +32,7 @@ export function sanitise(value: unknown, depth = 0): unknown {
     return '[truncated]';
   }
   if (typeof value === 'string') {
-    return value.length > MAX_STRING ? value.slice(0, MAX_STRING) + '...' : value;
+    return clip(value);
   }
   if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
     return value;
@@ -47,6 +53,14 @@ export function sanitise(value: unknown, depth = 0): unknown {
   return typeof value;
 }
 
+function prepare(entry: LogEntry): LogEntry {
+  return {
+    ...entry,
+    args: sanitise(entry.args),
+    ...(entry.detail === undefined ? {} : { detail: clip(entry.detail) }),
+  };
+}
+
 export class JsonlLogger implements Logger {
   readonly #file: string;
 
@@ -62,30 +76,40 @@ export class JsonlLogger implements Logger {
     } catch {
       return;
     }
-    if (size >= MAX_LOG_BYTES) {
-      renameSync(this.#file, this.#file + '.1');
+    if (size < MAX_LOG_BYTES) {
+      return;
     }
+    for (let i = LOG_BACKUPS - 1; i >= 1; i--) {
+      const from = `${this.#file}.${String(i)}`;
+      if (existsSync(from)) {
+        renameSync(from, `${this.#file}.${String(i + 1)}`);
+      }
+    }
+    renameSync(this.#file, this.#file + '.1');
   }
 
-  log(entry: LogEntry): void {
-    const line = JSON.stringify({
-      ts: new Date().toISOString(),
-      ...entry,
-      args: sanitise(entry.args),
-    });
+  log(entry: LogEntry): boolean {
+    const line = JSON.stringify({ ts: new Date().toISOString(), ...prepare(entry) });
     try {
       this.#rotateIfNeeded();
-      appendFileSync(this.#file, line + '\n', { encoding: 'utf8' });
+      appendFileSync(this.#file, line + '\n', { encoding: 'utf8', mode: 0o600 });
+      return true;
     } catch {
       process.stderr.write('companion-mcp: failed to write log\n');
+      return false;
     }
   }
 }
 
 export class MemoryLogger implements Logger {
   readonly entries: LogEntry[] = [];
+  healthy = true;
 
-  log(entry: LogEntry): void {
-    this.entries.push({ ...entry, args: sanitise(entry.args) });
+  log(entry: LogEntry): boolean {
+    if (!this.healthy) {
+      return false;
+    }
+    this.entries.push(prepare(entry));
+    return true;
   }
 }

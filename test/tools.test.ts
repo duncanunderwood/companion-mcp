@@ -52,11 +52,16 @@ describe('read tools', () => {
     expect(mock.requests).toHaveLength(0);
   });
 
-  it('get_custom_variable returns value and logs', async () => {
+  it('get_custom_variable returns value and logs without the value', async () => {
     const r = await h.call('get_custom_variable', { name: 'cue' });
     expect(r.structuredContent).toEqual({ name: 'cue', found: true, value: 'intro' });
     expect(textOf(r)).toBe('custom:cue = intro');
-    expect(h.logger.entries[0]).toMatchObject({ tool: 'get_custom_variable', outcome: 'ok' });
+    expect(h.logger.entries[0]).toMatchObject({
+      tool: 'get_custom_variable',
+      outcome: 'ok',
+      detail: 'custom:cue found',
+    });
+    expect(JSON.stringify(h.logger.entries)).not.toContain('intro');
   });
 
   it('get_custom_variable reports not found', async () => {
@@ -212,6 +217,51 @@ describe('press_button with writes enabled', () => {
     expect(r.isError).toBe(true);
     expect(textOf(r)).toMatch(/Outcome unknown/);
     expect(mock.requests).toHaveLength(1);
+    expect(h.logger.entries.map((e) => e.outcome)).toEqual(['attempt', 'error']);
+  });
+
+  it('on connection reset or 5xx after a press reports unknown outcome', async () => {
+    mock.mode = 'reset';
+    const r = await h.call('press_button', { page: 1, row: 0, column: 0, dry_run: false });
+    expect(textOf(r)).toMatch(/Outcome unknown/);
+    await new Promise((resolve) => setTimeout(resolve, 2100));
+    mock.mode = 'server-error';
+    const s = await h.call('press_button', { page: 1, row: 0, column: 0, dry_run: false });
+    expect(textOf(s)).toMatch(/500.*Outcome unknown/);
+  });
+
+  it('logs an attempt line before the press and refuses if the log is unhealthy', async () => {
+    const ok = await h.call('press_button', { page: 1, row: 0, column: 0, dry_run: false });
+    expect(ok.isError).toBeFalsy();
+    expect(h.logger.entries.map((e) => e.outcome)).toEqual(['attempt', 'ok']);
+    h.logger.healthy = false;
+    const r = await h.call('press_button', {
+      page: 1,
+      row: 3,
+      column: 7,
+      dry_run: false,
+      confirm: true,
+    });
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/audit log is not writable/);
+    expect(mock.requests).toHaveLength(1);
+  });
+
+  it('blocks a rapid second press of the same button and parallel presses', async () => {
+    const first = await h.call('press_button', { page: 1, row: 0, column: 0, dry_run: false });
+    expect(first.isError).toBeFalsy();
+    const second = await h.call('press_button', { page: 1, row: 0, column: 0, dry_run: false });
+    expect(second.isError).toBe(true);
+    expect(textOf(second)).toMatch(/wait \d+ms/);
+    expect(mock.requests).toHaveLength(1);
+    mock.mode = 'hang';
+    const [a, b] = await Promise.all([
+      h.call('press_button', { page: 1, row: 3, column: 7, dry_run: false, confirm: true }),
+      h.call('press_button', { page: 1, row: 3, column: 7, dry_run: false, confirm: true }),
+    ]);
+    const texts = [textOf(a), textOf(b)];
+    expect(texts.filter((t) => t.includes('in flight'))).toHaveLength(1);
+    expect(mock.requests).toHaveLength(2);
   });
 
   it('reports api disabled and companion down', async () => {
@@ -278,13 +328,27 @@ describe('set_custom_variable with writes enabled', () => {
     expect(mock.requests).toHaveLength(1);
   });
 
-  it('rejects over-long values', async () => {
+  it('rejects over-long and blank values', async () => {
     const r = await h.call('set_custom_variable', {
       name: 'cue',
       value: 'x'.repeat(1001),
       dry_run: false,
     });
     expect(r.isError).toBe(true);
+    const b = await h.call('set_custom_variable', { name: 'cue', value: '   ', dry_run: false });
+    expect(b.isError).toBe(true);
     expect(mock.requests).toHaveLength(0);
+  });
+
+  it('never logs the value', async () => {
+    await h.call('set_custom_variable', { name: 'cue', value: 'top-secret-cue', dry_run: false });
+    expect(JSON.stringify(h.logger.entries)).not.toContain('top-secret-cue');
+  });
+
+  it('cooldown applies per variable', async () => {
+    await h.call('set_custom_variable', { name: 'cue', value: 'a', dry_run: false });
+    const r = await h.call('set_custom_variable', { name: 'cue', value: 'b', dry_run: false });
+    expect(textOf(r)).toMatch(/wait/);
+    expect(mock.customVariables.get('cue')).toBe('a');
   });
 });

@@ -9,7 +9,7 @@
     "companion-mcp": "dist/index.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -21,8 +21,8 @@
     "test:coverage": "vitest run --coverage",
     "audit": "npm audit --audit-level=high",
     "secrets": "gitleaks detect --no-banner --redact",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test:coverage && npm run audit && npm run secrets",
-    "prepare": "husky"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run build && npm run test:coverage && npm run audit && npm run secrets",
+    "prepare": "husky || true"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

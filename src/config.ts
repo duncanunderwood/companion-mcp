@@ -35,7 +35,7 @@ function pick(env: EnvSource): Record<string, string> {
   const out: Record<string, string> = {};
   for (const key of Object.keys(envSchema.shape)) {
     const value = env[key];
-    if (value !== undefined && value !== '') {
+    if (value !== undefined) {
       out[key] = value;
     }
   }
@@ -57,13 +57,28 @@ function parsePrivateIpv4(host: string): boolean {
   return a === 192 && b === 168;
 }
 
+function mappedIpv4(h: string): string | undefined {
+  const dotted = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(h);
+  if (dotted?.[1] !== undefined) {
+    return dotted[1];
+  }
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
+  if (hex?.[1] !== undefined && hex[2] !== undefined) {
+    const hi = parseInt(hex[1], 16);
+    const lo = parseInt(hex[2], 16);
+    return [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join('.');
+  }
+  return undefined;
+}
+
 function parsePrivateIpv6(host: string): boolean {
   const h = host.toLowerCase();
   if (h === '::1') {
     return true;
   }
-  if (h.startsWith('::ffff:')) {
-    return parsePrivateIpv4(h.slice('::ffff:'.length));
+  const mapped = mappedIpv4(h);
+  if (mapped !== undefined) {
+    return parsePrivateIpv4(mapped);
   }
   return /^f[cd][0-9a-f]{2}:/.test(h);
 }

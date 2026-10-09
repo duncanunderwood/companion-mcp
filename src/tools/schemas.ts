@@ -53,8 +53,10 @@ export const connectionIdSchema = z
 
 export const variableValueSchema = z
   .string()
+  .min(1)
   .max(1000)
-  .describe('New value, stored as text, maximum 1000 characters');
+  .refine((v) => v.trim() !== '', 'value must not be blank')
+  .describe('New value, stored as text, 1 to 1000 characters, not blank');
 
 export const dryRunSchema = z
   .boolean()

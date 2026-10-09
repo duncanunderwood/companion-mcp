@@ -17,14 +17,16 @@ Built for a single operator running live events. Not a public package.
 - It will not write anything unless `COMPANION_ALLOW_WRITES=true`.
 - It will not act unless the model passes `dry_run: false` explicitly. Dry run is the default.
 - It will not press a high risk button without `confirm: true`.
-- It never retries a press or a write. On timeout it reports "outcome unknown".
+- It never retries a press or a write. On timeout, connection reset or a 5xx after a write it reports "outcome unknown".
+- It refuses a second write to the same button or variable while one is in flight, and for 2 seconds after.
+- It refuses writes if the audit log cannot be written. An "attempt" line is logged before every real write.
 - It never talks to a non-private address unless `COMPANION_ALLOW_REMOTE=true`.
 - It never opens a network socket of its own. stdio transport only.
 - It does not change button styles, restart connections, rescan surfaces or use the deprecated legacy API.
 
 ## Requirements
 
-- Node 20 or later
+- Node 22 or later
 - Companion 5.0.7 with Settings, HTTP, "HTTP API" enabled
 - [gitleaks](https://github.com/gitleaks/gitleaks) on PATH for the local secret scan (`npm run secrets` and the pre-commit hook)
 
@@ -52,7 +54,7 @@ Environment variables, all optional:
 | `COMPANION_TIMEOUT_MS`     | `3000`                    | Per request timeout, 100 to 30000.                                                                         |
 | `COMPANION_LOG_DIR`        | `./logs`                  | Directory for `companion-mcp.jsonl`. Rotates at 5 MB, keeps one backup.                                    |
 
-Any invalid value stops the server at startup. It never falls back to a guess.
+Any invalid value, including an empty string, stops the server at startup. It never falls back to a guess.
 
 ### Allowlist
 
@@ -141,7 +143,7 @@ claude mcp add companion -e COMPANION_URL=http://127.0.0.1:8000 -e COMPANION_ALL
 }
 ```
 
-`outcome` is `ok`, `refused` or `error`. Argument keys that look like secrets are redacted and long strings are truncated. The environment is never logged.
+`outcome` is `attempt`, `ok`, `refused` or `error`. Variable values are never logged (reads log only the name, writes log only the length). Argument keys that look like secrets are redacted, `detail` is clipped to 200 characters. The file is created mode 0600 and rotates at 5 MB keeping 5 backups. The environment is never logged.
 
 ## Pre-show checklist
 

@@ -175,7 +175,86 @@ If your client has no `cwd` field, keep the absolute paths in `env` and it will 
 
 ### Claude Desktop
 
-Settings, Developer, Edit Config. Paste the generic block into `claude_desktop_config.json`, save, fully quit and reopen the app. The tools appear under the tools icon in a chat.
+Settings, Developer, Edit Config opens `claude_desktop_config.json`. Add the `companion` entry inside `mcpServers`.
+
+These examples set `COMPANION_ALLOW_WRITES` to `true` so the AI can press allowlisted buttons straight away. Every press still defaults to a dry run, must be on your allowlist, and high risk entries need `confirm: true`. Set it to `"false"` if you want a read-only setup.
+
+Windows (backslashes must be doubled in JSON; replace `<USERNAME>` with your Windows user name):
+
+```json
+"companion": {
+  "command": "node",
+  "args": ["C:\\Users\\<USERNAME>\\companion-mcp\\dist\\index.js"],
+  "env": {
+    "COMPANION_URL": "http://127.0.0.1:8000",
+    "COMPANION_ALLOW_WRITES": "true",
+    "COMPANION_ALLOWLIST_PATH": "C:\\Users\\<USERNAME>\\companion-mcp\\config\\allowlist.json",
+    "COMPANION_LOG_DIR": "C:\\Users\\<USERNAME>\\companion-mcp\\logs"
+  }
+}
+```
+
+macOS and Linux (replace `<USERNAME>`):
+
+```json
+"companion": {
+  "command": "node",
+  "args": ["/Users/<USERNAME>/companion-mcp/dist/index.js"],
+  "env": {
+    "COMPANION_URL": "http://127.0.0.1:8000",
+    "COMPANION_ALLOW_WRITES": "true",
+    "COMPANION_ALLOWLIST_PATH": "/Users/<USERNAME>/companion-mcp/config/allowlist.json",
+    "COMPANION_LOG_DIR": "/Users/<USERNAME>/companion-mcp/logs"
+  }
+}
+```
+
+Save, then fully quit and reopen Claude Desktop. Closing the window is not enough; the server is only launched at startup. On Windows, force it from a terminal:
+
+```powershell
+taskkill /IM Claude.exe /F
+```
+
+On macOS: Cmd+Q, or `pkill -x Claude`. The tools appear under the tools icon in a chat.
+
+### Claude Code (CLI)
+
+Registers the server for all your projects (`--scope user`). Run from any folder. Writes are enabled in these examples; change `COMPANION_ALLOW_WRITES=true` to `false` for read-only.
+
+Windows PowerShell:
+
+```powershell
+claude mcp add companion --scope user `
+  -e COMPANION_URL=http://127.0.0.1:8000 `
+  -e COMPANION_ALLOW_WRITES=true `
+  -e COMPANION_ALLOWLIST_PATH=$env:USERPROFILE\companion-mcp\config\allowlist.json `
+  -e COMPANION_LOG_DIR=$env:USERPROFILE\companion-mcp\logs `
+  -- node $env:USERPROFILE\companion-mcp\dist\index.js
+```
+
+Windows Command Prompt (cmd):
+
+```bat
+claude mcp add companion --scope user ^
+  -e COMPANION_URL=http://127.0.0.1:8000 ^
+  -e COMPANION_ALLOW_WRITES=true ^
+  -e COMPANION_ALLOWLIST_PATH=%USERPROFILE%\companion-mcp\config\allowlist.json ^
+  -e COMPANION_LOG_DIR=%USERPROFILE%\companion-mcp\logs ^
+  -- node %USERPROFILE%\companion-mcp\dist\index.js
+```
+
+macOS and Linux:
+
+```bash
+claude mcp add companion --scope user \
+  -e COMPANION_URL=http://127.0.0.1:8000 \
+  -e COMPANION_ALLOW_WRITES=true \
+  -e COMPANION_ALLOWLIST_PATH=$HOME/companion-mcp/config/allowlist.json \
+  -e COMPANION_LOG_DIR=$HOME/companion-mcp/logs \
+  -- node $HOME/companion-mcp/dist/index.js
+```
+
+Check with `claude mcp list`. Remove with `claude mcp remove companion`.
 
 ### Cursor
 

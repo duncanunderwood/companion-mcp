@@ -10,7 +10,8 @@ type Target =
   | { readonly kind: 'button'; readonly location: ButtonLocation }
   | { readonly kind: 'variable'; readonly name: string }
   | { readonly kind: 'connection'; readonly id: string }
-  | { readonly kind: 'surfaces' };
+  | { readonly kind: 'surfaces' }
+  | { readonly kind: 'pages' };
 
 /**
  * Proof that the safety layer approved exactly one write target.
@@ -46,6 +47,10 @@ export class WriteAuthorisation {
 
   coversSurfaces(): boolean {
     return this.#target.kind === 'surfaces';
+  }
+
+  coversPages(): boolean {
+    return this.#target.kind === 'pages';
   }
 }
 

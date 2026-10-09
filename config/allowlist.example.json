@@ -31,5 +31,6 @@
   ],
   "variables": ["cue", "speaker_name"],
   "connections": ["replace-with-id-from-list_connections"],
-  "surfaces_rescan": false
+  "surfaces_rescan": false,
+  "pages_create": false
 }

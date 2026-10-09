@@ -22,13 +22,62 @@ function readAll(dir: string): Map<string, string> {
 const files = readAll(srcDir);
 
 describe('structural invariants', () => {
-  it('only companion-client.ts performs HTTP requests', () => {
+  it('only companion-client.ts performs HTTP requests and only trpc-client.ts opens sockets', () => {
     for (const [name, text] of files) {
-      if (name === 'companion-client.ts') {
-        continue;
+      if (name !== 'companion-client.ts') {
+        expect(text, name).not.toMatch(/\bfetch\s*\(/);
+        expect(text, name).not.toMatch(/node:http/);
       }
-      expect(text, name).not.toMatch(/\bfetch\s*\(/);
-      expect(text, name).not.toMatch(/node:http/);
+      if (name !== 'trpc-client.ts') {
+        expect(text, name).not.toMatch(/new WebSocket\(/);
+      }
+    }
+  });
+
+  const configWriteMethods = [
+    'createButton',
+    'deleteButton',
+    'createPages',
+    'addEntity',
+    'setEntityOption',
+    'removeEntity',
+  ];
+
+  it('config write methods are only called from config-tools inside performWrite after a decision', () => {
+    // eslint-disable-next-line security/detect-non-literal-regexp -- fixed list of method names
+    const re = new RegExp(`\\.(${configWriteMethods.join('|')})\\(`);
+    const callers = [...files.entries()].filter(
+      ([name, text]) => name !== 'companion-config.ts' && re.test(text),
+    );
+    expect(callers.map(([n]) => n)).toEqual(['tools/config-tools.ts']);
+    const text = files.get('tools/config-tools.ts') ?? '';
+    for (const m of configWriteMethods) {
+      const idx = text.indexOf(`.${m}(`);
+      expect(idx, m).toBeGreaterThan(0);
+      const before = text.slice(0, idx);
+      expect(before.lastIndexOf('performWrite('), m).toBeGreaterThan(
+        before.lastIndexOf('registerTool('),
+      );
+      expect(before.lastIndexOf('if (!decision.allowed)'), m).toBeGreaterThan(
+        before.lastIndexOf('registerTool('),
+      );
+    }
+    const cfg = files.get('companion-config.ts') ?? '';
+    for (const m of configWriteMethods) {
+      const idx = cfg.indexOf(`async ${m}(`);
+      expect(idx, m).toBeGreaterThan(0);
+      const bodyStart = cfg.indexOf('{', cfg.indexOf(')', idx));
+      expect(cfg.slice(bodyStart, bodyStart + 400), m).toMatch(
+        /requireButtonAuth\(|coversPages\(\)/,
+      );
+    }
+  });
+
+  it('tRPC mutations are only issued from companion-config.ts', () => {
+    for (const [name, text] of files) {
+      if (name !== 'companion-config.ts' && name !== 'trpc-client.ts') {
+        expect(text, name).not.toMatch(/'mutation'/);
+      }
     }
   });
 

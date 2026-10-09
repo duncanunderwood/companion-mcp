@@ -36,6 +36,10 @@ describe('read tools', () => {
     expect(tools.tools.map((t) => t.name).sort()).toEqual([
       'button_action',
       'connection_action',
+      'create_button',
+      'create_page',
+      'delete_button',
+      'get_button',
       'get_connection_status',
       'get_custom_variable',
       'get_module_variable',
@@ -47,6 +51,7 @@ describe('read tools', () => {
       'set_button_step',
       'set_button_style',
       'set_custom_variable',
+      'update_button',
     ]);
   });
 

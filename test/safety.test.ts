@@ -33,6 +33,7 @@ describe('parseAllowlist', () => {
     expect(a.variables).toEqual([]);
     expect(a.connections).toEqual([]);
     expect(a.surfaces_rescan).toBe(false);
+    expect(a.pages_create).toBe(false);
   });
   it('rejects bad connection ids, duplicates, and non-boolean rescan', () => {
     expect(() => parseAllowlist(JSON.stringify({ buttons: [], connections: ['a b'] }))).toThrow(

@@ -33,7 +33,7 @@ Developed by MyEvent Labs. MIT licensed.
 - Every call is written to an audit log before it happens. If the log cannot be written, writes are refused.
 - It only talks to loopback or private network addresses unless you opt in to remote.
 - It opens no network port of its own. It is a local process your AI client launches over stdio.
-- It uses only the documented Companion 5.0.7 HTTP API (`docs/companion-api.md`). No style changes, connection restarts, surface rescans or legacy endpoints.
+- It uses only the documented Companion 5.0.7 HTTP API (`docs/companion-api.md`), never the deprecated legacy endpoints or Companion's internal admin API. See [Companion command coverage](#companion-command-coverage).
 
 ## Requirements
 
@@ -129,17 +129,21 @@ Then add only buttons that really exist on your pages. Open each one in the Comp
     { "page": 1, "row": 1, "column": 0, "label": "Play walk-in music", "risk": "low" },
     { "page": 1, "row": 3, "column": 7, "label": "STREAM STOP", "risk": "high" }
   ],
-  "variables": ["cue", "speaker_name"]
+  "variables": ["cue", "speaker_name"],
+  "connections": ["replace-with-id-from-list_connections"],
+  "surfaces_rescan": false
 }
 ```
 
-| Field           | Meaning                                                                                 |
-| --------------- | --------------------------------------------------------------------------------------- |
-| `page`          | Companion page number, 1 to 99                                                          |
-| `row`, `column` | 0-based grid position as shown in the Companion button editor, 0 to 31                  |
-| `label`         | Your own description, shown back to the AI and written to the log                       |
-| `risk`          | `low` acts on `dry_run: false`. `high` additionally requires `confirm: true`            |
-| `variables`     | Custom variable names the AI may set. Omit or leave empty to forbid all variable writes |
+| Field             | Meaning                                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `page`            | Companion page number, 1 to 99                                                                                                              |
+| `row`, `column`   | 0-based grid position as shown in the Companion button editor, 0 to 31                                                                      |
+| `label`           | Your own description, shown back to the AI and written to the log                                                                           |
+| `risk`            | `low` acts on `dry_run: false`. `high` additionally requires `confirm: true`                                                                |
+| `variables`       | Custom variable names the AI may set. Omit or leave empty to forbid all variable writes                                                     |
+| `connections`     | Connection ids (from `list_connections`) the AI may restart, enable or disable. Always needs `confirm: true`. Omit or leave empty to forbid |
+| `surfaces_rescan` | `true` to allow `rescan_surfaces`. Default `false`                                                                                          |
 
 Rules: no duplicates, no unknown keys, names use letters, digits, `_` and `-` only. A missing or invalid file stops the server with a clear message.
 
@@ -319,20 +323,61 @@ Any invalid value, including an empty string, stops the server at startup with a
 
 ## Tools
 
-| Tool                    | Writes | Description                                                                                                 |
-| ----------------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
-| `ping`                  | no     | Liveness. Reports whether writes are enabled. No Companion request.                                         |
-| `get_custom_variable`   | no     | Read `$(custom:name)`.                                                                                      |
-| `get_module_variable`   | no     | Read `$(label:name)` from a connection.                                                                     |
-| `list_connections`      | no     | All connections with status.                                                                                |
-| `get_connection_status` | no     | One connection by id.                                                                                       |
-| `list_allowlist`        | no     | Shows what `press_button` and `set_custom_variable` may touch.                                              |
-| `press_button`          | yes    | Press and release an allowlisted button. `dry_run` defaults to true. High risk needs `confirm: true`.       |
-| `set_custom_variable`   | yes    | Set an allowlisted custom variable to a non-blank text value (1 to 1000 chars). `dry_run` defaults to true. |
+| Tool                    | Writes | Description                                                                                                                  |
+| ----------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `ping`                  | no     | Liveness. Reports whether writes are enabled. No Companion request.                                                          |
+| `get_custom_variable`   | no     | Read `$(custom:name)`.                                                                                                       |
+| `get_module_variable`   | no     | Read `$(label:name)` from a connection.                                                                                      |
+| `list_connections`      | no     | All connections with status.                                                                                                 |
+| `get_connection_status` | no     | One connection by id.                                                                                                        |
+| `list_allowlist`        | no     | Shows what `press_button` and `set_custom_variable` may touch.                                                               |
+| `press_button`          | yes    | Press and release an allowlisted button. `dry_run` defaults to true. High risk needs `confirm: true`.                        |
+| `button_action`         | yes    | `down`, `up`, `rotate_left` or `rotate_right` on an allowlisted button. Same gates as `press_button`.                        |
+| `set_button_step`       | yes    | Set the current step (1-based) of a multi-step allowlisted button. Same gates.                                               |
+| `set_button_style`      | yes    | Change text, text colour, background colour and/or size of an allowlisted button. Same gates.                                |
+| `set_custom_variable`   | yes    | Set an allowlisted custom variable to a non-blank text value (1 to 1000 chars). `dry_run` defaults to true.                  |
+| `connection_action`     | yes    | `restart`, `enable` or `disable` a connection whose id is in the allowlist `connections` list. Always needs `confirm: true`. |
+| `rescan_surfaces`       | yes    | Rescan for USB surfaces. Needs `"surfaces_rescan": true` in the allowlist.                                                   |
 
 Every tool returns a one-line text summary plus structured data. Refusals and errors come back as errors with a plain reason, never a stack trace.
 
 A press result of `ok` means Companion accepted the request, not that the downstream device acted. Confirm by reading a variable back.
+
+All write tools share the same gates: writes enabled, on the allowlist, `dry_run: false`, `confirm: true` where required, one attempt, per-target cooldown, attempt line in the audit log first.
+
+## Companion command coverage
+
+Companion 5.0 documents seven remote-control methods: HTTP, TCP/UDP, OSC, Ember+, Art-Net/DMX, RossTalk and Satellite. This server uses HTTP only, because it is the one with readable responses and no extra listener to configure. The table lists every documented HTTP command and how it is exposed.
+
+| Companion HTTP command                                                             | Tool                           | Notes                                                              |
+| ---------------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------ |
+| `GET /api/custom-variable/<name>/value`                                            | `get_custom_variable`          |                                                                    |
+| `GET /api/variable/<label>/<name>/value`                                           | `get_module_variable`          |                                                                    |
+| `GET /api/connections`                                                             | `list_connections`             |                                                                    |
+| `GET /api/connections/<id>/status`                                                 | `get_connection_status`        |                                                                    |
+| `POST /api/location/<p>/<r>/<c>/press`                                             | `press_button`                 |                                                                    |
+| `POST /api/location/<p>/<r>/<c>/down`                                              | `button_action` `down`         |                                                                    |
+| `POST /api/location/<p>/<r>/<c>/up`                                                | `button_action` `up`           |                                                                    |
+| `POST /api/location/<p>/<r>/<c>/rotate-left`                                       | `button_action` `rotate_left`  |                                                                    |
+| `POST /api/location/<p>/<r>/<c>/rotate-right`                                      | `button_action` `rotate_right` |                                                                    |
+| `POST /api/location/<p>/<r>/<c>/step?step=<n>`                                     | `set_button_step`              |                                                                    |
+| `POST /api/location/<p>/<r>/<c>/style`                                             | `set_button_style`             | JSON body form. `text`, `color`, `bgcolor`, `size`                 |
+| `POST /api/custom-variable/<name>/value`                                           | `set_custom_variable`          | Plain text body form, so values never appear in a URL              |
+| `POST /api/connections/<id>/restart`                                               | `connection_action` `restart`  |                                                                    |
+| `POST /api/connections/<id>/enable`                                                | `connection_action` `enable`   |                                                                    |
+| `POST /api/connections/<id>/disable`                                               | `connection_action` `disable`  |                                                                    |
+| `POST /api/surfaces/rescan`                                                        | `rescan_surfaces`              |                                                                    |
+| Legacy `/press/bank/...`, `/style/bank/...`, `/set/custom-variable/...`, `/rescan` | not used                       | Deprecated by Companion, needs a separate setting, will be removed |
+
+Commands that exist only on other transports and therefore are not available here:
+
+| Command                                                | Transport     | Why not                                              |
+| ------------------------------------------------------ | ------------- | ---------------------------------------------------- |
+| `SURFACE <id> PAGE-SET <page>`, `PAGE-UP`, `PAGE-DOWN` | TCP/UDP only  | No HTTP equivalent in 5.0.7                          |
+| `CUSTOM-VARIABLE <name> GET-VALUE`                     | TCP/UDP       | Same as HTTP `get_custom_variable`, already covered  |
+| Art-Net, Ember+, RossTalk, Satellite                   | own protocols | Device and surface integration, not control commands |
+
+Things the Companion HTTP API cannot do at all, so neither can this server: list pages, list buttons, read a button's actions or feedbacks, list variables, create variables, edit triggers, or change surfaces. Those live only in Companion's internal admin API, which is undocumented and unauthenticated, and this project deliberately stays off it.
 
 ## Logs
 

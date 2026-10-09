@@ -34,6 +34,8 @@ describe('read tools', () => {
   it('lists all tools', async () => {
     const tools = await h.client.listTools();
     expect(tools.tools.map((t) => t.name).sort()).toEqual([
+      'button_action',
+      'connection_action',
       'get_connection_status',
       'get_custom_variable',
       'get_module_variable',
@@ -41,6 +43,9 @@ describe('read tools', () => {
       'list_connections',
       'ping',
       'press_button',
+      'rescan_surfaces',
+      'set_button_step',
+      'set_button_style',
       'set_custom_variable',
     ]);
   });

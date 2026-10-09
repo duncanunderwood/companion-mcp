@@ -4,6 +4,7 @@ import { WriteAuthorisation, mintKey } from './authorisation.js';
 import {
   COLUMN_MAX,
   COLUMN_MIN,
+  CONNECTION_ID_RE,
   PAGE_MAX,
   PAGE_MIN,
   ROW_MAX,
@@ -32,6 +33,8 @@ const allowlistSchema = z
   .object({
     buttons: z.array(buttonEntrySchema).max(500),
     variables: z.array(z.string().regex(VARIABLE_NAME_RE)).max(500).default([]),
+    connections: z.array(z.string().regex(CONNECTION_ID_RE)).max(500).default([]),
+    surfaces_rescan: z.boolean().default(false),
   })
   .strict();
 
@@ -40,6 +43,8 @@ export type ButtonEntry = z.infer<typeof buttonEntrySchema>;
 export interface Allowlist {
   readonly buttons: readonly ButtonEntry[];
   readonly variables: readonly string[];
+  readonly connections: readonly string[];
+  readonly surfaces_rescan: boolean;
 }
 
 export function locationKey(loc: ButtonLocation): string {
@@ -73,6 +78,13 @@ export function parseAllowlist(text: string): Allowlist {
     }
     vars.add(name);
   }
+  const conns = new Set<string>();
+  for (const id of parsed.data.connections) {
+    if (conns.has(id)) {
+      throw new AllowlistError(`allowlist has a duplicate connection entry ${id}`);
+    }
+    conns.add(id);
+  }
   return parsed.data;
 }
 
@@ -103,6 +115,10 @@ export function isVariableAllowed(allowlist: Allowlist, name: string): boolean {
   return allowlist.variables.includes(name);
 }
 
+export function isConnectionAllowed(allowlist: Allowlist, id: string): boolean {
+  return allowlist.connections.includes(id);
+}
+
 export interface SafetyContext {
   readonly allowWrites: boolean;
   readonly allowlist: Allowlist;
@@ -119,6 +135,16 @@ export type PressDecision =
 export type VariableDecision =
   | { readonly allowed: true; readonly name: string; readonly auth: WriteAuthorisation }
   | { readonly allowed: false; readonly reason: string };
+
+export type ConnectionDecision =
+  | { readonly allowed: true; readonly id: string; readonly auth: WriteAuthorisation }
+  | { readonly allowed: false; readonly reason: string };
+
+export type SurfacesDecision =
+  | { readonly allowed: true; readonly auth: WriteAuthorisation }
+  | { readonly allowed: false; readonly reason: string };
+
+const WRITES_DISABLED = 'writes are disabled (COMPANION_ALLOW_WRITES is not true)';
 
 export function evaluatePress(
   ctx: SafetyContext,
@@ -165,6 +191,37 @@ export function evaluateSetVariable(ctx: SafetyContext, name: string): VariableD
     };
   }
   return { allowed: true, name, auth: new WriteAuthorisation(mintKey, { kind: 'variable', name }) };
+}
+
+/** Connection restart, enable and disable are always treated as high risk. */
+export function evaluateConnectionAction(
+  ctx: SafetyContext,
+  id: string,
+  opts: { readonly confirm: boolean },
+): ConnectionDecision {
+  if (!CONNECTION_ID_RE.test(id)) {
+    return { allowed: false, reason: 'connection id is invalid' };
+  }
+  if (!isConnectionAllowed(ctx.allowlist, id)) {
+    return { allowed: false, reason: `connection "${id}" is not on the allowlist` };
+  }
+  if (!isWriteEnabled(ctx)) {
+    return { allowed: false, reason: WRITES_DISABLED };
+  }
+  if (!opts.confirm) {
+    return { allowed: false, reason: 'connection actions are high risk and require confirm: true' };
+  }
+  return { allowed: true, id, auth: new WriteAuthorisation(mintKey, { kind: 'connection', id }) };
+}
+
+export function evaluateSurfacesRescan(ctx: SafetyContext): SurfacesDecision {
+  if (!ctx.allowlist.surfaces_rescan) {
+    return { allowed: false, reason: 'surface rescan is not enabled in the allowlist' };
+  }
+  if (!isWriteEnabled(ctx)) {
+    return { allowed: false, reason: WRITES_DISABLED };
+  }
+  return { allowed: true, auth: new WriteAuthorisation(mintKey, { kind: 'surfaces' }) };
 }
 
 export const DEFAULT_COOLDOWN_MS = 2000;

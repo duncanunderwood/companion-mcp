@@ -14,6 +14,8 @@ export const testAllowlist: Allowlist = {
     { page: 1, row: 3, column: 7, label: 'STREAM STOP', risk: 'high' },
   ],
   variables: ['cue'],
+  connections: ['abc'],
+  surfaces_rescan: true,
 };
 
 export function makeConfig(url: URL, overrides: Partial<Config> = {}): Config {

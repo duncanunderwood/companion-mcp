@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CompanionClient, CompanionError } from '../src/companion-client.js';
-import { evaluatePress, evaluateSetVariable } from '../src/safety.js';
+import {
+  evaluateConnectionAction,
+  evaluatePress,
+  evaluateSetVariable,
+  evaluateSurfacesRescan,
+} from '../src/safety.js';
 import { testAllowlist } from './helpers.js';
 import { MockCompanion } from './mock-companion.js';
 
@@ -40,6 +45,7 @@ beforeEach(() => {
   mock.moduleVariables.clear();
   mock.buttons.clear();
   mock.connections = [];
+  mock.rescanFails = false;
 });
 
 function asErr(p: Promise<unknown>): Promise<CompanionError> {
@@ -202,6 +208,97 @@ describe('pressButton', () => {
   });
 });
 
+describe('buttonAction, setButtonStep, setButtonStyle', () => {
+  it('posts each action to its documented path', async () => {
+    mock.buttons.add('1/0/0');
+    for (const a of ['down', 'up', 'rotate-left', 'rotate-right'] as const) {
+      expect(await client.buttonAction(low, a, lowAuth)).toBe('ok');
+    }
+    expect(mock.requests.map((r) => r.path)).toEqual([
+      '/api/location/1/0/0/down',
+      '/api/location/1/0/0/up',
+      '/api/location/1/0/0/rotate-left',
+      '/api/location/1/0/0/rotate-right',
+    ]);
+  });
+  it('rejects an unknown action and a foreign auth before sending', async () => {
+    await expect(client.buttonAction(low, 'explode' as unknown as 'down', lowAuth)).rejects.toThrow(
+      /unknown button action/,
+    );
+    await expect(client.buttonAction(low, 'down', cueAuth)).rejects.toThrow(/not authorised/);
+    await expect(client.setButtonStep(low, 1, cueAuth)).rejects.toThrow(/not authorised/);
+    await expect(client.setButtonStyle(low, { text: 'x' }, cueAuth)).rejects.toThrow(
+      /not authorised/,
+    );
+    expect(mock.requests).toHaveLength(0);
+  });
+  it('step uses a query string and surfaces Bad step', async () => {
+    mock.buttons.add('1/0/0');
+    expect(await client.setButtonStep(low, 3, lowAuth)).toBe('ok');
+    expect(mock.requests[0]?.path).toBe('/api/location/1/0/0/step?step=3');
+    await expect(client.setButtonStep(low, 7, lowAuth)).rejects.toThrow(/Bad step/);
+    await expect(client.setButtonStep(low, 0, lowAuth)).rejects.toThrow(CompanionError);
+  });
+  it('style validates fields locally and sends JSON', async () => {
+    mock.buttons.add('1/0/0');
+    expect(
+      await client.setButtonStyle(low, { text: 'A', color: '#00ff00', size: 14 }, lowAuth),
+    ).toBe('ok');
+    expect(mock.requests[0]?.body).toBe('{"text":"A","color":"#00ff00","size":14}');
+    await expect(client.setButtonStyle(low, {}, lowAuth)).rejects.toThrow(/at least one/);
+    await expect(client.setButtonStyle(low, { color: 'green' }, lowAuth)).rejects.toThrow(
+      CompanionError,
+    );
+    await expect(client.setButtonStyle(low, { size: 1 }, lowAuth)).rejects.toThrow(CompanionError);
+    await expect(client.setButtonStyle(low, { text: 'x'.repeat(201) }, lowAuth)).rejects.toThrow(
+      /too long/,
+    );
+  });
+});
+
+describe('rescanSurfaces and connectionAction', () => {
+  const surfAuth = (() => {
+    const d = evaluateSurfacesRescan(ctx);
+    if (!d.allowed) {
+      throw new Error(d.reason);
+    }
+    return d.auth;
+  })();
+  const connAuth = (() => {
+    const d = evaluateConnectionAction(ctx, 'abc', { confirm: true });
+    if (!d.allowed) {
+      throw new Error(d.reason);
+    }
+    return d.auth;
+  })();
+  it('rescan ok and fail', async () => {
+    expect(await client.rescanSurfaces(surfAuth)).toBe('ok');
+    mock.rescanFails = true;
+    await expect(client.rescanSurfaces(surfAuth)).rejects.toThrow(/rescan failed/);
+    await expect(client.rescanSurfaces(connAuth)).rejects.toThrow(/not authorised/);
+  });
+  it('connection actions map documented responses', async () => {
+    mock.connections = [{ id: 'abc', label: 'OBS', enabled: true }];
+    expect(await client.connectionAction('abc', 'restart', connAuth)).toBe('ok');
+    expect(await client.connectionAction('abc', 'disable', connAuth)).toBe('ok');
+    expect(await client.connectionAction('abc', 'restart', connAuth)).toBe('inactive');
+    expect(await client.connectionAction('abc', 'enable', connAuth)).toBe('ok');
+    mock.connections = [];
+    expect(await client.connectionAction('abc', 'restart', connAuth)).toBe('not_found');
+    await expect(client.connectionAction('abc', 'restart', surfAuth)).rejects.toThrow(
+      /not authorised/,
+    );
+    await expect(
+      client.connectionAction('abc', 'nuke' as unknown as 'restart', connAuth),
+    ).rejects.toThrow(/unknown connection action/);
+  });
+  it('connection action with a mismatched 200 body is malformed', async () => {
+    mock.connections = [{ id: 'abc', label: 'OBS', enabled: true }];
+    mock.mode = 'garbage';
+    await expect(client.connectionAction('abc', 'enable', connAuth)).rejects.toThrow(/malformed/);
+  });
+});
+
 describe('setCustomVariable', () => {
   it('posts plain text body and never puts the value in the url', async () => {
     mock.customVariables.set('cue', 'old');
@@ -222,6 +319,18 @@ describe('setCustomVariable', () => {
     await expect(client.setCustomVariable('cue', '   ', cueAuth)).rejects.toThrow(/empty/);
     expect(mock.requests).toHaveLength(0);
   });
+});
+
+describe('connection handling', () => {
+  it('sends connection: close and stays fast after an idle gap', async () => {
+    mock.customVariables.set('cue', 'x');
+    await client.getCustomVariable('cue');
+    expect(mock.requests[0]?.connection).toBe('close');
+    await new Promise((resolve) => setTimeout(resolve, 2100));
+    const t0 = Date.now();
+    await client.getCustomVariable('cue');
+    expect(Date.now() - t0).toBeLessThan(250);
+  }, 10_000);
 });
 
 describe('network errors', () => {

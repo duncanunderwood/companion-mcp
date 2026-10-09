@@ -3,6 +3,7 @@
 Ground truth for this project. If an endpoint is not listed here it must not be used.
 
 Sources:
+
 - `docs/user-guide/5_remote-control/http-remote-control.md` at tag `v5.0.7`
 - `companion/lib/Service/HttpApi.ts` at tag `v5.0.7` (for exact status codes and response bodies)
 
@@ -29,14 +30,14 @@ All of these are `POST` and return `200` body `ok` on success.
 
 If there is no button configured at the location: `204` body `No control`.
 
-| Action | Method | Path |
-|---|---|---|
-| Press and release (down then up) | POST | `/api/location/<page>/<row>/<column>/press` |
-| Press and hold (down actions only) | POST | `/api/location/<page>/<row>/<column>/down` |
-| Release (up actions only) | POST | `/api/location/<page>/<row>/<column>/up` |
-| Rotate encoder left | POST | `/api/location/<page>/<row>/<column>/rotate-left` |
-| Rotate encoder right | POST | `/api/location/<page>/<row>/<column>/rotate-right` |
-| Set current step | POST | `/api/location/<page>/<row>/<column>/step?step=<n>` |
+| Action                             | Method | Path                                                |
+| ---------------------------------- | ------ | --------------------------------------------------- |
+| Press and release (down then up)   | POST   | `/api/location/<page>/<row>/<column>/press`         |
+| Press and hold (down actions only) | POST   | `/api/location/<page>/<row>/<column>/down`          |
+| Release (up actions only)          | POST   | `/api/location/<page>/<row>/<column>/up`            |
+| Rotate encoder left                | POST   | `/api/location/<page>/<row>/<column>/rotate-left`   |
+| Rotate encoder right               | POST   | `/api/location/<page>/<row>/<column>/rotate-right`  |
+| Set current step                   | POST   | `/api/location/<page>/<row>/<column>/step?step=<n>` |
 
 `step` returns `400` body `Bad step` if the step is invalid for the control.
 
@@ -49,10 +50,10 @@ POST /api/location/1/0/2/press
 
 ## Button style (write)
 
-| Action | Method | Path |
-|---|---|---|
-| Set style via query | POST | `/api/location/<page>/<row>/<column>/style?text=<text>&bgcolor=<hex>&color=<hex>&size=<n>` |
-| Set style via JSON body | POST | `/api/location/<page>/<row>/<column>/style` with body `{ "text": "...", "bgcolor": "#rrggbb", "color": "#rrggbb", "size": 28 }` |
+| Action                  | Method | Path                                                                                                                            |
+| ----------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Set style via query     | POST   | `/api/location/<page>/<row>/<column>/style?text=<text>&bgcolor=<hex>&color=<hex>&size=<n>`                                      |
+| Set style via JSON body | POST   | `/api/location/<page>/<row>/<column>/style` with body `{ "text": "...", "bgcolor": "#rrggbb", "color": "#rrggbb", "size": 28 }` |
 
 Colours accept `#rrggbb` or `rgb(r,g,b)`. `size` accepts a number or `"auto"`.
 Returns `200` body `ok`, or `204` body `No control` if no button exists at the location.
@@ -79,6 +80,7 @@ Three forms are accepted:
 3. JSON body: `POST /api/custom-variable/<name>/value` with `Content-Type: application/json`. A JSON string must be quoted (`"Some text"`). Objects, arrays, numbers, booleans and null are stored as typed values. An empty body is interpreted as `undefined`.
 
 Responses:
+
 - `200` body `ok`
 - `400` body `No value`: no value could be read from query or body
 - `404` body `Not found`: variable does not exist
@@ -140,11 +142,11 @@ GET /api/connections/<id>/status
 
 ### Restart, enable, disable connection (write)
 
-| Action | Method | Path | 200 body |
-|---|---|---|---|
-| Restart | POST | `/api/connections/<id>/restart` | `{ "id": "abc123", "message": "Restart triggered" }` |
-| Enable | POST | `/api/connections/<id>/enable` | `{ "id": "abc123", "enabled": true }` |
-| Disable | POST | `/api/connections/<id>/disable` | `{ "id": "abc123", "enabled": false }` |
+| Action  | Method | Path                            | 200 body                                             |
+| ------- | ------ | ------------------------------- | ---------------------------------------------------- |
+| Restart | POST   | `/api/connections/<id>/restart` | `{ "id": "abc123", "message": "Restart triggered" }` |
+| Enable  | POST   | `/api/connections/<id>/enable`  | `{ "id": "abc123", "enabled": true }`                |
+| Disable | POST   | `/api/connections/<id>/disable` | `{ "id": "abc123", "enabled": false }`               |
 
 Errors: `404` connection not found. Restart also returns `409` `{ "status": 409, "message": "Connection is inactive and cannot be restarted" }`.
 

@@ -126,7 +126,21 @@ Add this inside the `mcpServers` object of the client's config file (Claude Desk
 
 Windows example of the path form: `"C:\\Users\\you\\companion-mcp\\dist\\index.js"`.
 
-Fully quit and reopen the client afterwards; servers are only launched at startup. On Windows, Claude Desktop keeps running in the tray, so use `taskkill /IM Claude.exe /F` or quit it from the tray icon. On macOS use Cmd+Q.
+Fully quit and reopen the client afterwards; servers are only launched at startup. Closing the window is not enough. Claude Desktop keeps running in the background, so force it from a terminal:
+
+Windows:
+
+```powershell
+taskkill /IM Claude.exe /F
+```
+
+macOS:
+
+```bash
+pkill -x Claude
+```
+
+Then open the client again.
 
 ### Claude Code (CLI)
 

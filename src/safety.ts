@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
+import { WriteAuthorisation, mintKey } from './authorisation.js';
 import {
   COLUMN_MAX,
   COLUMN_MIN,
@@ -112,11 +113,11 @@ export function isWriteEnabled(ctx: Pick<SafetyContext, 'allowWrites'>): boolean
 }
 
 export type PressDecision =
-  | { readonly allowed: true; readonly entry: ButtonEntry }
+  | { readonly allowed: true; readonly entry: ButtonEntry; readonly auth: WriteAuthorisation }
   | { readonly allowed: false; readonly reason: string };
 
 export type VariableDecision =
-  | { readonly allowed: true; readonly name: string }
+  | { readonly allowed: true; readonly name: string; readonly auth: WriteAuthorisation }
   | { readonly allowed: false; readonly reason: string };
 
 export function evaluatePress(
@@ -143,7 +144,11 @@ export function evaluatePress(
       reason: `button "${entry.label}" is high risk and requires confirm: true`,
     };
   }
-  return { allowed: true, entry };
+  return {
+    allowed: true,
+    entry,
+    auth: new WriteAuthorisation(mintKey, { kind: 'button', location: { ...loc } }),
+  };
 }
 
 export function evaluateSetVariable(ctx: SafetyContext, name: string): VariableDecision {
@@ -159,5 +164,50 @@ export function evaluateSetVariable(ctx: SafetyContext, name: string): VariableD
       reason: 'writes are disabled (COMPANION_ALLOW_WRITES is not true)',
     };
   }
-  return { allowed: true, name };
+  return { allowed: true, name, auth: new WriteAuthorisation(mintKey, { kind: 'variable', name }) };
+}
+
+export const DEFAULT_COOLDOWN_MS = 2000;
+
+export type LimiterDecision =
+  | { readonly ok: true; readonly release: () => void }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Serialises writes per target: one in flight at a time, then a cooldown.
+ * Stops an LLM from double-firing a button with parallel or rapid calls.
+ */
+export class WriteLimiter {
+  readonly #inFlight = new Set<string>();
+  readonly #lastDone = new Map<string, number>();
+  readonly #cooldownMs: number;
+  readonly #now: () => number;
+
+  constructor(cooldownMs = DEFAULT_COOLDOWN_MS, now: () => number = Date.now) {
+    this.#cooldownMs = cooldownMs;
+    this.#now = now;
+  }
+
+  acquire(key: string): LimiterDecision {
+    if (this.#inFlight.has(key)) {
+      return { ok: false, reason: `a write to ${key} is already in flight` };
+    }
+    const last = this.#lastDone.get(key);
+    const now = this.#now();
+    if (last !== undefined && now - last < this.#cooldownMs) {
+      const wait = this.#cooldownMs - (now - last);
+      return {
+        ok: false,
+        reason: `${key} was written ${String(now - last)}ms ago, wait ${String(wait)}ms`,
+      };
+    }
+    this.#inFlight.add(key);
+    return {
+      ok: true,
+      release: () => {
+        this.#inFlight.delete(key);
+        this.#lastDone.set(key, this.#now());
+      },
+    };
+  }
 }

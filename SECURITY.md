@@ -20,5 +20,5 @@ This is a private, single-operator project. Report issues by opening a GitHub is
 
 ## Supported versions
 
-- Node 20 or later
+- Node 22 or later
 - Bitfocus Companion 5.0.7 (HTTP API as documented in docs/companion-api.md)

@@ -1,4 +1,8 @@
+import type { ReadableStreamReadResult } from 'node:stream/web';
 import { z } from 'zod';
+import { WriteAuthorisation, type ButtonLocation } from './authorisation.js';
+
+export type { ButtonLocation } from './authorisation.js';
 
 export type CompanionErrorKind = 'timeout' | 'network' | 'http' | 'malformed';
 
@@ -6,18 +10,19 @@ export class CompanionError extends Error {
   override readonly name = 'CompanionError';
   readonly kind: CompanionErrorKind;
   readonly status: number | undefined;
+  /** True when a write may have reached Companion, so the real outcome is unknown. */
+  readonly writeAttempted: boolean;
 
-  constructor(kind: CompanionErrorKind, message: string, status?: number) {
+  constructor(
+    kind: CompanionErrorKind,
+    message: string,
+    opts: { readonly status?: number; readonly writeAttempted?: boolean } = {},
+  ) {
     super(message);
     this.kind = kind;
-    this.status = status;
+    this.status = opts.status;
+    this.writeAttempted = opts.writeAttempted ?? false;
   }
-}
-
-export interface ButtonLocation {
-  readonly page: number;
-  readonly row: number;
-  readonly column: number;
 }
 
 export type VariableValue = string | number | boolean | null | VariableJson;
@@ -29,17 +34,18 @@ export type VariableResult =
 export type PressResult = 'ok' | 'no_control';
 export type SetVariableResult = 'ok' | 'not_found';
 
-const connectionStatusSchema = z.looseObject({
-  category: z.string().nullable().optional(),
-  level: z.string().nullable().optional(),
-  message: z.string().nullable().optional(),
+const connectionStatusSchema = z.object({
+  category: z.string().max(64).nullable().optional(),
+  level: z.string().max(64).nullable().optional(),
+  message: z.string().max(500).nullable().optional(),
 });
 
-const connectionSchema = z.looseObject({
-  id: z.string(),
-  label: z.string(),
-  moduleId: z.string().optional(),
+const connectionSchema = z.object({
+  id: z.string().max(128),
+  label: z.string().max(128),
+  moduleId: z.string().max(128).optional(),
   enabled: z.boolean(),
+  sortOrder: z.number().optional(),
   status: connectionStatusSchema.nullable().optional(),
 });
 
@@ -58,6 +64,7 @@ export const ROW_MAX = 31;
 export const COLUMN_MIN = 0;
 export const COLUMN_MAX = 31;
 export const MAX_RESPONSE_BYTES = 256 * 1024;
+export const MAX_CONNECTIONS = 500;
 
 type FetchLike = (input: URL, init: RequestInit) => Promise<Response>;
 
@@ -82,6 +89,71 @@ function assertPattern(value: string, re: RegExp, label: string): string {
     throw new CompanionError('malformed', `${label} contains invalid characters or is too long`);
   }
   return value;
+}
+
+async function readBounded(res: Response): Promise<string> {
+  const declared = Number(res.headers.get('content-length') ?? '0');
+  if (declared > MAX_RESPONSE_BYTES) {
+    throw new CompanionError('malformed', 'response too large');
+  }
+  if (res.body === null) {
+    return '';
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const chunk: ReadableStreamReadResult<Uint8Array> = await reader.read();
+    if (chunk.done) {
+      break;
+    }
+    const value = chunk.value;
+    total += value.byteLength;
+    if (total > MAX_RESPONSE_BYTES) {
+      await reader.cancel();
+      throw new CompanionError('malformed', 'response too large');
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new CompanionError('malformed', 'Companion returned malformed JSON');
+  }
+}
+
+function isTextNotFound(res: RawResponse): boolean {
+  return res.status === 404 && res.body.trim() === 'Not found';
+}
+
+function isJsonNotFound(res: RawResponse): boolean {
+  if (res.status !== 404) {
+    return false;
+  }
+  try {
+    const parsed: unknown = JSON.parse(res.body);
+    return (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      (parsed as { status?: unknown }).status === 404
+    );
+  } catch {
+    return false;
+  }
+}
+
+function unexpected(res: RawResponse, writeAttempted = false): CompanionError {
+  if (res.status === 403) {
+    return new CompanionError('http', 'Companion HTTP API is disabled (403)', { status: 403 });
+  }
+  return new CompanionError('http', `unexpected Companion response ${String(res.status)}`, {
+    status: res.status,
+    writeAttempted: writeAttempted && res.status >= 500,
+  });
 }
 
 export class CompanionClient {
@@ -115,12 +187,10 @@ export class CompanionClient {
       init.headers = { 'content-type': body.contentType };
       init.body = body.text;
     }
+    const writeAttempted = method === 'POST';
     try {
       const res = await this.#fetch(this.#url(segments), init);
-      const text = await res.text();
-      if (text.length > MAX_RESPONSE_BYTES) {
-        throw new CompanionError('malformed', 'response too large');
-      }
+      const text = await readBounded(res);
       return {
         status: res.status,
         contentType: res.headers.get('content-type') ?? '',
@@ -128,46 +198,30 @@ export class CompanionClient {
       };
     } catch (err) {
       if (err instanceof CompanionError) {
-        throw err;
+        throw new CompanionError(err.kind, err.message, { writeAttempted });
       }
       if (controller.signal.aborted) {
         throw new CompanionError(
           'timeout',
           `Companion did not respond within ${String(this.#timeoutMs)}ms`,
+          { writeAttempted },
         );
       }
-      throw new CompanionError('network', 'could not reach Companion');
+      throw new CompanionError('network', 'could not reach Companion', { writeAttempted });
     } finally {
       clearTimeout(timer);
     }
   }
 
-  #unexpected(res: RawResponse): CompanionError {
-    if (res.status === 403) {
-      return new CompanionError('http', 'Companion HTTP API is disabled (403)', 403);
-    }
-    return new CompanionError(
-      'http',
-      `unexpected Companion response ${String(res.status)}`,
-      res.status,
-    );
-  }
-
   #parseVariable(res: RawResponse): VariableResult {
-    if (res.status === 404) {
+    if (isTextNotFound(res)) {
       return { found: false };
     }
     if (res.status !== 200) {
-      throw this.#unexpected(res);
+      throw unexpected(res);
     }
     if (res.contentType.toLowerCase().includes('application/json')) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(res.body);
-      } catch {
-        throw new CompanionError('malformed', 'Companion returned malformed JSON');
-      }
-      return { found: true, value: parsed as VariableValue };
+      return { found: true, value: parseJson(res.body) as VariableValue };
     }
     return { found: true, value: res.body };
   }
@@ -188,15 +242,9 @@ export class CompanionClient {
   async listConnections(): Promise<Connection[]> {
     const res = await this.#request('GET', ['connections']);
     if (res.status !== 200) {
-      throw this.#unexpected(res);
+      throw unexpected(res);
     }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(res.body);
-    } catch {
-      throw new CompanionError('malformed', 'Companion returned malformed JSON');
-    }
-    const result = z.array(connectionSchema).safeParse(parsed);
+    const result = z.array(connectionSchema).max(MAX_CONNECTIONS).safeParse(parseJson(res.body));
     if (!result.success) {
       throw new CompanionError('malformed', 'Companion connection list had an unexpected shape');
     }
@@ -206,26 +254,23 @@ export class CompanionClient {
   async getConnectionStatus(id: string): Promise<ConnectionStatusResult> {
     const safeId = assertPattern(id, CONNECTION_ID_RE, 'connection id');
     const res = await this.#request('GET', ['connections', safeId, 'status']);
-    if (res.status === 404) {
+    if (isJsonNotFound(res)) {
       return { found: false };
     }
     if (res.status !== 200) {
-      throw this.#unexpected(res);
+      throw unexpected(res);
     }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(res.body);
-    } catch {
-      throw new CompanionError('malformed', 'Companion returned malformed JSON');
-    }
-    const result = connectionSchema.safeParse(parsed);
+    const result = connectionSchema.safeParse(parseJson(res.body));
     if (!result.success) {
       throw new CompanionError('malformed', 'Companion connection status had an unexpected shape');
     }
     return { found: true, connection: result.data };
   }
 
-  async pressButton(location: ButtonLocation): Promise<PressResult> {
+  async pressButton(location: ButtonLocation, auth: WriteAuthorisation): Promise<PressResult> {
+    if (!(auth instanceof WriteAuthorisation) || !auth.coversButton(location)) {
+      throw new CompanionError('malformed', 'press not authorised by the safety layer');
+    }
     const page = assertInt(location.page, PAGE_MIN, PAGE_MAX, 'page');
     const row = assertInt(location.row, ROW_MIN, ROW_MAX, 'row');
     const column = assertInt(location.column, COLUMN_MIN, COLUMN_MAX, 'column');
@@ -242,21 +287,36 @@ export class CompanionClient {
     if (res.status === 200) {
       return 'ok';
     }
-    throw this.#unexpected(res);
+    throw unexpected(res, true);
   }
 
-  async setCustomVariable(name: string, value: string): Promise<SetVariableResult> {
+  async setCustomVariable(
+    name: string,
+    value: string,
+    auth: WriteAuthorisation,
+  ): Promise<SetVariableResult> {
+    if (!(auth instanceof WriteAuthorisation) || !auth.coversVariable(name)) {
+      throw new CompanionError('malformed', 'write not authorised by the safety layer');
+    }
     const safeName = assertPattern(name, VARIABLE_NAME_RE, 'variable name');
+    if (value.trim() === '') {
+      throw new CompanionError('malformed', 'value must not be empty');
+    }
     const res = await this.#request('POST', ['custom-variable', safeName, 'value'], {
       contentType: 'text/plain',
       text: value,
     });
-    if (res.status === 404) {
+    if (isTextNotFound(res)) {
       return 'not_found';
+    }
+    if (res.status === 400) {
+      throw new CompanionError('http', 'Companion rejected the value (400 No value)', {
+        status: 400,
+      });
     }
     if (res.status === 200) {
       return 'ok';
     }
-    throw this.#unexpected(res);
+    throw unexpected(res, true);
   }
 }

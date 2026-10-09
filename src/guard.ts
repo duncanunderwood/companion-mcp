@@ -7,6 +7,8 @@ export interface ToolOutcome {
   readonly data: Record<string, unknown>;
   readonly refused?: boolean;
   readonly dryRun?: boolean;
+  /** Logged instead of summary when the summary carries data that should stay out of the audit log. */
+  readonly logDetail?: string;
 }
 
 export type GuardedHandler<Args> = (args: Args) => Promise<ToolOutcome>;
@@ -27,10 +29,12 @@ export function errorResult(message: string): CallToolResult {
   };
 }
 
+export const UNKNOWN_OUTCOME = 'Outcome unknown, verify in Companion before acting again.';
+
 export function safeErrorMessage(err: unknown): string {
   if (err instanceof CompanionError) {
-    if (err.kind === 'timeout') {
-      return `${err.message}. Outcome unknown, verify in Companion before acting again.`;
+    if (err.kind === 'timeout' || err.writeAttempted) {
+      return `${err.message}. ${UNKNOWN_OUTCOME}`;
     }
     return err.message;
   }
@@ -52,7 +56,7 @@ export function guard<Args>(
         outcome: outcome.refused === true ? 'refused' : 'ok',
         allowed: outcome.refused !== true,
         ...(outcome.dryRun === undefined ? {} : { dryRun: outcome.dryRun }),
-        detail: outcome.summary,
+        detail: outcome.logDetail ?? outcome.summary,
         durationMs: Date.now() - started,
       });
       return toResult(outcome);

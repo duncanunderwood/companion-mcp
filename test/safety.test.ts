@@ -2,8 +2,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { WriteAuthorisation } from '../src/authorisation.js';
 import {
   AllowlistError,
+  WriteLimiter,
   evaluatePress,
   evaluateSetVariable,
   getButtonEntry,
@@ -133,6 +135,10 @@ describe('evaluatePress', () => {
     const d = evaluatePress(ctx, high, { confirm: true });
     expect(d.allowed).toBe(true);
     expect(d.allowed ? d.entry.label : '').toBe('STREAM STOP');
+    expect(d.allowed ? d.auth : null).toBeInstanceOf(WriteAuthorisation);
+    expect(d.allowed && d.auth.coversButton(high)).toBe(true);
+    expect(d.allowed && d.auth.coversButton(low)).toBe(false);
+    expect(d.allowed && d.auth.coversVariable('cue')).toBe(false);
   });
   it('allows low risk without confirm', () => {
     expect(
@@ -148,6 +154,41 @@ describe('evaluateSetVariable', () => {
     expect(evaluateSetVariable(on, 'bad name').allowed).toBe(false);
     expect(evaluateSetVariable(on, 'other').allowed).toBe(false);
     expect(evaluateSetVariable({ ...on, allowWrites: false }, 'cue').allowed).toBe(false);
-    expect(evaluateSetVariable(on, 'cue')).toEqual({ allowed: true, name: 'cue' });
+    const d = evaluateSetVariable(on, 'cue');
+    expect(d).toMatchObject({ allowed: true, name: 'cue' });
+    expect(d.allowed && d.auth.coversVariable('cue')).toBe(true);
+    expect(d.allowed && d.auth.coversVariable('other')).toBe(false);
+  });
+});
+
+describe('WriteAuthorisation', () => {
+  it('cannot be minted without the key', () => {
+    expect(() => new WriteAuthorisation(Symbol('fake'), { kind: 'variable', name: 'cue' })).toThrow(
+      /only be minted/,
+    );
+  });
+});
+
+describe('WriteLimiter', () => {
+  it('blocks concurrent writes to the same key and enforces cooldown', () => {
+    let now = 1000;
+    const limiter = new WriteLimiter(2000, () => now);
+    const first = limiter.acquire('a');
+    expect(first.ok).toBe(true);
+    expect(limiter.acquire('a')).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/in flight/) as string,
+    });
+    expect(limiter.acquire('b').ok).toBe(true);
+    if (first.ok) {
+      first.release();
+    }
+    now = 1500;
+    expect(limiter.acquire('a')).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/wait 1500ms/) as string,
+    });
+    now = 3001;
+    expect(limiter.acquire('a').ok).toBe(true);
   });
 });

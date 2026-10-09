@@ -8,7 +8,16 @@ export interface SeenRequest {
   readonly body: string;
 }
 
-export type MockMode = 'normal' | 'hang' | 'garbage' | 'disabled';
+export type MockMode =
+  | 'normal'
+  | 'hang'
+  | 'garbage'
+  | 'disabled'
+  | 'reset'
+  | 'server-error'
+  | 'redirect'
+  | 'huge'
+  | 'empty404';
 
 export class MockCompanion {
   readonly requests: SeenRequest[] = [];
@@ -76,6 +85,31 @@ export class MockCompanion {
         res.end('{not json');
         return;
       }
+      if (this.mode === 'reset') {
+        req.socket.destroy();
+        return;
+      }
+      if (this.mode === 'server-error') {
+        res.statusCode = 500;
+        res.end('fail');
+        return;
+      }
+      if (this.mode === 'redirect') {
+        res.statusCode = 302;
+        res.setHeader('location', 'http://127.0.0.1:1/api/x');
+        res.end();
+        return;
+      }
+      if (this.mode === 'huge') {
+        res.setHeader('content-type', 'text/html');
+        res.end('x'.repeat(300 * 1024));
+        return;
+      }
+      if (this.mode === 'empty404') {
+        res.statusCode = 404;
+        res.end('');
+        return;
+      }
       this.#route(req.method ?? '', path, body, res);
     });
   }
@@ -121,7 +155,9 @@ export class MockCompanion {
         return;
       }
       if (method === 'POST') {
-        if (!this.customVariables.has(name)) {
+        if (body.trim() === '') {
+          this.#send(res, 400, 'No value');
+        } else if (!this.customVariables.has(name)) {
           this.#send(res, 404, 'Not found');
         } else {
           this.customVariables.set(name, body.trim());

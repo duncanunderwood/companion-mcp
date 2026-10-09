@@ -5,7 +5,7 @@ Audience: single operator (Duncan, MyEvent Productions). Not a public package.
 
 ## Stack
 
-TypeScript (strict), Node 20+, @modelcontextprotocol/sdk, zod, vitest, eslint, prettier.
+TypeScript (strict), Node 22+, @modelcontextprotocol/sdk, zod, vitest, eslint, prettier.
 stdio transport only. No web framework. No extra runtime dependencies without asking.
 
 ## Non-negotiable rules

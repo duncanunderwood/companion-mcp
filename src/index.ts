@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CompanionClient } from './companion-client.js';
-import { loadConfig } from './config.js';
+import { ConfigError, loadConfig } from './config.js';
 import { JsonlLogger } from './logger.js';
-import { loadAllowlist } from './safety.js';
+import { AllowlistError, loadAllowlist } from './safety.js';
 import { createServer } from './server.js';
 
 function fail(message: string): never {
@@ -11,16 +11,24 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+function startupMessage(err: unknown): string {
+  if (err instanceof ConfigError || err instanceof AllowlistError) {
+    return err.message;
+  }
+  return 'startup failed (check COMPANION_LOG_DIR is writable)';
+}
+
 async function main(): Promise<void> {
   let config;
   let allowlist;
+  let logger;
   try {
     config = loadConfig();
     allowlist = loadAllowlist(config.allowlistPath);
+    logger = new JsonlLogger(config.logDir);
   } catch (err) {
-    fail(err instanceof Error ? err.message : 'startup failed');
+    fail(startupMessage(err));
   }
-  const logger = new JsonlLogger(config.logDir);
   const client = new CompanionClient(config.companionUrl, config.timeoutMs);
   const server = createServer({ config, client, logger, allowlist });
   process.stderr.write(
@@ -29,6 +37,6 @@ async function main(): Promise<void> {
   await server.connect(new StdioServerTransport());
 }
 
-main().catch((err: unknown) => {
-  fail(err instanceof Error ? err.message : 'fatal error');
+main().catch(() => {
+  fail('fatal error');
 });

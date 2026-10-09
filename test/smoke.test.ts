@@ -64,7 +64,7 @@ describeIfBuilt('end to end over stdio against built dist', () => {
   });
 
   it('runs the manual test script steps', async () => {
-    expect((await client.listTools()).tools).toHaveLength(8);
+    expect((await client.listTools()).tools).toHaveLength(13);
 
     const ping = await call('ping');
     expect(ping.structuredContent).toMatchObject({ ok: true, writesEnabled: true });

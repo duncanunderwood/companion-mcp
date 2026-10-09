@@ -4,10 +4,16 @@ import {
   COLUMN_MIN,
   CONNECTION_ID_RE,
   CONNECTION_LABEL_RE,
+  HEX_COLOUR_RE,
   PAGE_MAX,
   PAGE_MIN,
   ROW_MAX,
   ROW_MIN,
+  SIZE_MAX,
+  SIZE_MIN,
+  STEP_MAX,
+  STEP_MIN,
+  STYLE_TEXT_MAX,
   VARIABLE_NAME_RE,
 } from '../companion-client.js';
 
@@ -67,3 +73,24 @@ export const confirmSchema = z
   .boolean()
   .default(false)
   .describe('Required true for high risk allowlist entries');
+
+export const stepSchema = z
+  .number()
+  .int()
+  .min(STEP_MIN)
+  .max(STEP_MAX)
+  .describe(`Step number, 1-based, ${String(STEP_MIN)} to ${String(STEP_MAX)}`);
+
+export const hexColourSchema = z
+  .string()
+  .regex(HEX_COLOUR_RE, 'use #rrggbb')
+  .describe('Colour as #rrggbb');
+
+export const styleTextSchema = z
+  .string()
+  .max(STYLE_TEXT_MAX)
+  .describe(`Button text, up to ${String(STYLE_TEXT_MAX)} characters, may be empty to clear`);
+
+export const styleSizeSchema = z
+  .union([z.literal('auto'), z.number().int().min(SIZE_MIN).max(SIZE_MAX)])
+  .describe(`Font size ${String(SIZE_MIN)} to ${String(SIZE_MAX)}, or "auto"`);

@@ -144,19 +144,26 @@ export function registerReadTools(server: McpServer, ctx: AppContext): void {
     {
       title: 'List allowlist',
       description:
-        'Show the buttons and custom variables this server is permitted to write. Only these can be used with press_button and set_custom_variable. Shows page/row/column, label and risk level. Makes no request to Companion.',
+        'Show everything this server is permitted to write: buttons (page/row/column, label, risk), custom variable names, connection ids, and whether surface rescan is enabled. Only these can be used by the write tools. Makes no request to Companion.',
       inputSchema: emptySchema,
       annotations: { readOnlyHint: true },
     },
     guard(ctx.logger, 'list_allowlist', (): Promise<ToolOutcome> => {
       const buttons = ctx.allowlist.buttons.map((b) => ({ ...b }));
       const variables = [...ctx.allowlist.variables];
+      const connections = [...ctx.allowlist.connections];
+      const surfacesRescan = ctx.allowlist.surfaces_rescan;
       const lines = buttons.map(
         (b) => `${String(b.page)}/${String(b.row)}/${String(b.column)} "${b.label}" risk=${b.risk}`,
       );
       return Promise.resolve({
-        summary: `${String(buttons.length)} buttons, ${String(variables.length)} variables\n${lines.join('\n')}${variables.length > 0 ? '\nvariables: ' + variables.join(', ') : ''}`,
-        data: { buttons, variables },
+        summary: [
+          `${String(buttons.length)} buttons, ${String(variables.length)} variables, ${String(connections.length)} connections, surface rescan ${surfacesRescan ? 'enabled' : 'disabled'}`,
+          ...lines,
+          ...(variables.length > 0 ? ['variables: ' + variables.join(', ')] : []),
+          ...(connections.length > 0 ? ['connections: ' + connections.join(', ')] : []),
+        ].join('\n'),
+        data: { buttons, variables, connections, surfacesRescan },
       });
     }),
   );

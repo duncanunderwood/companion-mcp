@@ -5,6 +5,7 @@ export interface SeenRequest {
   readonly method: string;
   readonly path: string;
   readonly contentType: string | undefined;
+  readonly connection: string | undefined;
   readonly body: string;
 }
 
@@ -24,7 +25,10 @@ export class MockCompanion {
   readonly customVariables = new Map<string, unknown>();
   readonly moduleVariables = new Map<string, unknown>();
   readonly buttons = new Set<string>();
+  readonly steps = new Map<string, number>();
+  readonly styles = new Map<string, Record<string, unknown>>();
   connections: unknown[] = [];
+  rescanFails = false;
   mode: MockMode = 'normal';
   #server: Server | undefined;
   #url: URL | undefined;
@@ -70,6 +74,7 @@ export class MockCompanion {
         method: req.method ?? '',
         path,
         contentType: req.headers['content-type'],
+        connection: req.headers.connection,
         body,
       });
       if (this.mode === 'hang') {
@@ -135,13 +140,70 @@ export class MockCompanion {
       this.#send(res, 404, '');
       return;
     }
-    if (method === 'POST' && seg[1] === 'location' && seg.length === 6 && seg[5] === 'press') {
+    if (method === 'POST' && seg[1] === 'location' && seg.length === 6) {
       const key = `${seg[2] ?? ''}/${seg[3] ?? ''}/${seg[4] ?? ''}`;
-      if (this.buttons.has(key)) {
-        this.#send(res, 200, 'ok');
-      } else {
+      const verb = seg[5] ?? '';
+      if (!this.buttons.has(key)) {
         this.#send(res, 204, 'No control');
+        return;
       }
+      if (['press', 'down', 'up', 'rotate-left', 'rotate-right'].includes(verb)) {
+        this.#send(res, 200, 'ok');
+        return;
+      }
+      if (verb === 'step') {
+        const step = Number(url.searchParams.get('step'));
+        if (!Number.isInteger(step) || step < 1 || step > 3) {
+          this.#send(res, 400, 'Bad step');
+        } else {
+          this.steps.set(key, step);
+          this.#send(res, 200, 'ok');
+        }
+        return;
+      }
+      if (verb === 'style') {
+        this.styles.set(key, JSON.parse(body) as Record<string, unknown>);
+        this.#send(res, 200, 'ok');
+        return;
+      }
+      this.#send(res, 404, '');
+      return;
+    }
+    if (method === 'POST' && seg[1] === 'surfaces' && seg[2] === 'rescan' && seg.length === 3) {
+      if (this.rescanFails) {
+        this.#send(res, 500, 'fail');
+      } else {
+        this.#send(res, 200, 'ok');
+      }
+      return;
+    }
+    if (method === 'POST' && seg[1] === 'connections' && seg.length === 4) {
+      const id = seg[2] ?? '';
+      const verb = seg[3] ?? '';
+      const conn = this.connections.find(
+        (c) => typeof c === 'object' && c !== null && (c as { id?: unknown }).id === id,
+      ) as { id: string; enabled: boolean } | undefined;
+      if (conn === undefined) {
+        this.#send(res, 404, { status: 404, message: 'Connection not found' });
+        return;
+      }
+      if (verb === 'restart') {
+        if (!conn.enabled) {
+          this.#send(res, 409, {
+            status: 409,
+            message: 'Connection is inactive and cannot be restarted',
+          });
+        } else {
+          this.#send(res, 200, { id, message: 'Restart triggered' });
+        }
+        return;
+      }
+      if (verb === 'enable' || verb === 'disable') {
+        conn.enabled = verb === 'enable';
+        this.#send(res, 200, { id, enabled: conn.enabled });
+        return;
+      }
+      this.#send(res, 404, '');
       return;
     }
     if (seg[1] === 'custom-variable' && seg.length === 4 && seg[3] === 'value') {

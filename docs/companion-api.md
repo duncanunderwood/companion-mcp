@@ -58,7 +58,7 @@ POST /api/location/1/0/2/press
 Colours accept `#rrggbb` or `rgb(r,g,b)`. `size` accepts a number or `"auto"`.
 Returns `200` body `ok`, or `204` body `No control` if no button exists at the location.
 
-This project does not implement style changes in the first version.
+Exposed by this project as `set_button_style` using the JSON body form.
 
 ## Custom variables
 
@@ -150,7 +150,7 @@ GET /api/connections/<id>/status
 
 Errors: `404` connection not found. Restart also returns `409` `{ "status": 409, "message": "Connection is inactive and cannot be restarted" }`.
 
-This project does not implement connection restart, enable or disable in the first version.
+Exposed by this project as `connection_action`, gated by the allowlist `connections` list and `confirm: true`.
 
 ## Surfaces
 
@@ -158,7 +158,7 @@ This project does not implement connection restart, enable or disable in the fir
 POST /api/surfaces/rescan
 ```
 
-`200` body `ok`, or `500` body `fail`. Not implemented in this project.
+`200` body `ok`, or `500` body `fail`. Exposed by this project as `rescan_surfaces`, gated by the allowlist `surfaces_rescan` flag.
 
 ## Deprecated legacy endpoints (do not use)
 

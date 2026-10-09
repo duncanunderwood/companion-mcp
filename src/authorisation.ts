@@ -8,7 +8,9 @@ const MINT = Symbol('companion-mcp.write-authorisation');
 
 type Target =
   | { readonly kind: 'button'; readonly location: ButtonLocation }
-  | { readonly kind: 'variable'; readonly name: string };
+  | { readonly kind: 'variable'; readonly name: string }
+  | { readonly kind: 'connection'; readonly id: string }
+  | { readonly kind: 'surfaces' };
 
 /**
  * Proof that the safety layer approved exactly one write target.
@@ -36,6 +38,14 @@ export class WriteAuthorisation {
 
   coversVariable(name: string): boolean {
     return this.#target.kind === 'variable' && this.#target.name === name;
+  }
+
+  coversConnection(id: string): boolean {
+    return this.#target.kind === 'connection' && this.#target.id === id;
+  }
+
+  coversSurfaces(): boolean {
+    return this.#target.kind === 'surfaces';
   }
 }
 

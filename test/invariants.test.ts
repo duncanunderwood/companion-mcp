@@ -32,18 +32,49 @@ describe('structural invariants', () => {
     }
   });
 
-  it('press and set endpoints are only called from write-tools after a safety decision', () => {
+  const writeMethods = [
+    'pressButton',
+    'buttonAction',
+    'setButtonStep',
+    'setButtonStyle',
+    'setCustomVariable',
+    'connectionAction',
+    'rescanSurfaces',
+  ];
+
+  it('client write methods are only called from write-tools, each inside performWrite', () => {
+    // eslint-disable-next-line security/detect-non-literal-regexp -- fixed list of method names
+    const re = new RegExp(`\\.(${writeMethods.join('|')})\\(`);
     const callers = [...files.entries()].filter(
-      ([name, text]) =>
-        name !== 'companion-client.ts' && /\.(pressButton|setCustomVariable)\(/.test(text),
+      ([name, text]) => name !== 'companion-client.ts' && re.test(text),
     );
     expect(callers.map(([n]) => n)).toEqual(['tools/write-tools.ts']);
     const text = files.get('tools/write-tools.ts') ?? '';
-    expect(text).toMatch(/evaluatePress\(/);
-    expect(text).toMatch(/evaluateSetVariable\(/);
-    expect(text.indexOf('evaluatePress(')).toBeLessThan(text.indexOf('.pressButton('));
-    expect(text.indexOf('evaluateSetVariable(')).toBeLessThan(text.indexOf('.setCustomVariable('));
-    expect(text).toMatch(/if \(!decision\.allowed\)/);
+    for (const m of writeMethods) {
+      const idx = text.indexOf(`.${m}(`);
+      expect(idx, m).toBeGreaterThan(0);
+      const before = text.slice(0, idx);
+      expect(before.lastIndexOf('performWrite('), m).toBeGreaterThan(
+        before.lastIndexOf('registerTool('),
+      );
+      expect(before.lastIndexOf('if (!decision.allowed)'), m).toBeGreaterThan(
+        before.lastIndexOf('registerTool('),
+      );
+    }
+  });
+
+  it('every client write method requires a WriteAuthorisation', () => {
+    const text = files.get('companion-client.ts') ?? '';
+    for (const m of writeMethods) {
+      if (m === 'pressButton') {
+        continue;
+      }
+      const idx = text.indexOf(`async ${m}(`);
+      expect(idx, m).toBeGreaterThan(0);
+      const bodyStart = text.indexOf('{', text.indexOf(')', idx));
+      const head = text.slice(bodyStart, bodyStart + 400);
+      expect(head, m).toMatch(/requireAuth\(/);
+    }
   });
 
   it('safety decisions check both allowlist and write gate', () => {
@@ -61,7 +92,7 @@ describe('structural invariants', () => {
 
   it('no legacy Companion endpoints are referenced', () => {
     for (const [name, text] of files) {
-      expect(text, name).not.toMatch(/press\/bank|style\/bank|set\/custom-variable|\/rescan/);
+      expect(text, name).not.toMatch(/press\/bank|style\/bank|set\/custom-variable|['"`]\/rescan/);
     }
   });
 

@@ -6,6 +6,9 @@ import { WriteAuthorisation } from '../src/authorisation.js';
 import {
   AllowlistError,
   WriteLimiter,
+  evaluateConnectionAction,
+  evaluateSurfacesRescan,
+  isConnectionAllowed,
   evaluatePress,
   evaluateSetVariable,
   getButtonEntry,
@@ -24,10 +27,23 @@ const valid = JSON.stringify({
 });
 
 describe('parseAllowlist', () => {
-  it('parses a valid file and defaults variables to empty', () => {
+  it('parses a valid file and defaults variables, connections and rescan to closed', () => {
     const a = parseAllowlist(JSON.stringify({ buttons: [] }));
     expect(a.buttons).toEqual([]);
     expect(a.variables).toEqual([]);
+    expect(a.connections).toEqual([]);
+    expect(a.surfaces_rescan).toBe(false);
+  });
+  it('rejects bad connection ids, duplicates, and non-boolean rescan', () => {
+    expect(() => parseAllowlist(JSON.stringify({ buttons: [], connections: ['a b'] }))).toThrow(
+      AllowlistError,
+    );
+    expect(() => parseAllowlist(JSON.stringify({ buttons: [], connections: ['a', 'a'] }))).toThrow(
+      /duplicate connection/,
+    );
+    expect(() => parseAllowlist(JSON.stringify({ buttons: [], surfaces_rescan: 'yes' }))).toThrow(
+      AllowlistError,
+    );
   });
   it('rejects malformed JSON', () => {
     expect(() => parseAllowlist('{nope')).toThrow(AllowlistError);
@@ -158,6 +174,41 @@ describe('evaluateSetVariable', () => {
     expect(d).toMatchObject({ allowed: true, name: 'cue' });
     expect(d.allowed && d.auth.coversVariable('cue')).toBe(true);
     expect(d.allowed && d.auth.coversVariable('other')).toBe(false);
+  });
+});
+
+describe('evaluateConnectionAction', () => {
+  const on = { allowWrites: true, allowlist: testAllowlist };
+  it('refuses invalid, unlisted, writes-off, and unconfirmed', () => {
+    expect(evaluateConnectionAction(on, 'bad id', { confirm: true }).allowed).toBe(false);
+    expect(evaluateConnectionAction(on, 'zzz', { confirm: true }).allowed).toBe(false);
+    expect(
+      evaluateConnectionAction({ ...on, allowWrites: false }, 'abc', { confirm: true }).allowed,
+    ).toBe(false);
+    const d = evaluateConnectionAction(on, 'abc', { confirm: false });
+    expect(d.allowed ? '' : d.reason).toMatch(/require confirm/);
+    expect(isConnectionAllowed(testAllowlist, 'abc')).toBe(true);
+  });
+  it('allows with confirm and mints a connection-scoped auth', () => {
+    const d = evaluateConnectionAction(on, 'abc', { confirm: true });
+    expect(d.allowed).toBe(true);
+    expect(d.allowed && d.auth.coversConnection('abc')).toBe(true);
+    expect(d.allowed && d.auth.coversConnection('other')).toBe(false);
+    expect(d.allowed && d.auth.coversSurfaces()).toBe(false);
+    expect(d.allowed && d.auth.coversButton({ page: 1, row: 0, column: 0 })).toBe(false);
+  });
+});
+
+describe('evaluateSurfacesRescan', () => {
+  it('needs allowlist flag and writes', () => {
+    const closed = { ...testAllowlist, surfaces_rescan: false };
+    expect(evaluateSurfacesRescan({ allowWrites: true, allowlist: closed }).allowed).toBe(false);
+    expect(evaluateSurfacesRescan({ allowWrites: false, allowlist: testAllowlist }).allowed).toBe(
+      false,
+    );
+    const d = evaluateSurfacesRescan({ allowWrites: true, allowlist: testAllowlist });
+    expect(d.allowed && d.auth.coversSurfaces()).toBe(true);
+    expect(d.allowed && d.auth.coversVariable('cue')).toBe(false);
   });
 });
 

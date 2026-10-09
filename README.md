@@ -113,11 +113,13 @@ You should see the value, or `Not found` if the variable does not exist. A `403`
 
 The allowlist is the list of things the AI is permitted to write. It lives at `config/allowlist.json`, which is git-ignored so your rig layout is never committed.
 
+The installer creates it empty, so nothing can be pressed until you add entries. If you installed manually, create it:
+
 ```bash
-cp config/allowlist.example.json config/allowlist.json
+printf '{ "buttons": [], "variables": [] }' > config/allowlist.json
 ```
 
-Edit it to match your Companion pages:
+Then add only buttons that really exist on your pages. Open each one in the Companion button editor and copy the page, row and column from there. Do not copy the example below as-is; its positions are made up and a press would hit whatever happens to be at that slot on your rig. `config/allowlist.example.json` shows the format:
 
 ```json
 {
@@ -142,6 +144,8 @@ Edit it to match your Companion pages:
 Rules: no duplicates, no unknown keys, names use letters, digits, `_` and `-` only. A missing or invalid file stops the server with a clear message.
 
 Start with 3 or 4 entries. Add more once you trust the workflow.
+
+Stale entries are the main risk. If you move or delete a button, update the allowlist before the next show. A press on an empty slot returns "no button at ..." (nothing fires), but a press on a slot you later reused fires whatever is there now. Running `press_button` with the default dry run for each entry before a show is the quick check.
 
 ## Connect your AI client
 
@@ -177,7 +181,7 @@ If your client has no `cwd` field, keep the absolute paths in `env` and it will 
 
 Settings, Developer, Edit Config opens `claude_desktop_config.json`. Add the `companion` entry inside `mcpServers`.
 
-These examples set `COMPANION_ALLOW_WRITES` to `true` so the AI can press allowlisted buttons straight away. Every press still defaults to a dry run, must be on your allowlist, and high risk entries need `confirm: true`. Set it to `"false"` if you want a read-only setup.
+These examples are read-only (`COMPANION_ALLOW_WRITES` is `"false"`). To let the AI press allowlisted buttons, change that one value to `"true"`, save, and fully restart Claude Desktop. Every press then still defaults to a dry run, must be on your allowlist, and high risk entries need `confirm: true`. Set it back to `"false"` after the show.
 
 Windows (backslashes must be doubled in JSON; replace `<USERNAME>` with your Windows user name):
 
@@ -187,7 +191,7 @@ Windows (backslashes must be doubled in JSON; replace `<USERNAME>` with your Win
   "args": ["C:\\Users\\<USERNAME>\\companion-mcp\\dist\\index.js"],
   "env": {
     "COMPANION_URL": "http://127.0.0.1:8000",
-    "COMPANION_ALLOW_WRITES": "true",
+    "COMPANION_ALLOW_WRITES": "false",
     "COMPANION_ALLOWLIST_PATH": "C:\\Users\\<USERNAME>\\companion-mcp\\config\\allowlist.json",
     "COMPANION_LOG_DIR": "C:\\Users\\<USERNAME>\\companion-mcp\\logs"
   }
@@ -202,7 +206,7 @@ macOS and Linux (replace `<USERNAME>`):
   "args": ["/Users/<USERNAME>/companion-mcp/dist/index.js"],
   "env": {
     "COMPANION_URL": "http://127.0.0.1:8000",
-    "COMPANION_ALLOW_WRITES": "true",
+    "COMPANION_ALLOW_WRITES": "false",
     "COMPANION_ALLOWLIST_PATH": "/Users/<USERNAME>/companion-mcp/config/allowlist.json",
     "COMPANION_LOG_DIR": "/Users/<USERNAME>/companion-mcp/logs"
   }
@@ -219,14 +223,14 @@ On macOS: Cmd+Q, or `pkill -x Claude`. The tools appear under the tools icon in 
 
 ### Claude Code (CLI)
 
-Registers the server for all your projects (`--scope user`). Run from any folder. Writes are enabled in these examples; change `COMPANION_ALLOW_WRITES=true` to `false` for read-only.
+Registers the server for all your projects (`--scope user`). Run from any folder. These examples are read-only. To enable writes, change `COMPANION_ALLOW_WRITES=false` to `true` in the command (run `claude mcp remove companion` first if it is already registered).
 
 Windows PowerShell:
 
 ```powershell
 claude mcp add companion --scope user `
   -e COMPANION_URL=http://127.0.0.1:8000 `
-  -e COMPANION_ALLOW_WRITES=true `
+  -e COMPANION_ALLOW_WRITES=false `
   -e COMPANION_ALLOWLIST_PATH=$env:USERPROFILE\companion-mcp\config\allowlist.json `
   -e COMPANION_LOG_DIR=$env:USERPROFILE\companion-mcp\logs `
   -- node $env:USERPROFILE\companion-mcp\dist\index.js
@@ -237,7 +241,7 @@ Windows Command Prompt (cmd):
 ```bat
 claude mcp add companion --scope user ^
   -e COMPANION_URL=http://127.0.0.1:8000 ^
-  -e COMPANION_ALLOW_WRITES=true ^
+  -e COMPANION_ALLOW_WRITES=false ^
   -e COMPANION_ALLOWLIST_PATH=%USERPROFILE%\companion-mcp\config\allowlist.json ^
   -e COMPANION_LOG_DIR=%USERPROFILE%\companion-mcp\logs ^
   -- node %USERPROFILE%\companion-mcp\dist\index.js
@@ -248,7 +252,7 @@ macOS and Linux:
 ```bash
 claude mcp add companion --scope user \
   -e COMPANION_URL=http://127.0.0.1:8000 \
-  -e COMPANION_ALLOW_WRITES=true \
+  -e COMPANION_ALLOW_WRITES=false \
   -e COMPANION_ALLOWLIST_PATH=$HOME/companion-mcp/config/allowlist.json \
   -e COMPANION_LOG_DIR=$HOME/companion-mcp/logs \
   -- node $HOME/companion-mcp/dist/index.js

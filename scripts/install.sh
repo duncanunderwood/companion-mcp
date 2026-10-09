@@ -40,8 +40,13 @@ say "Building"
 npm run build --silent
 
 if [ ! -f config/allowlist.json ]; then
-  cp config/allowlist.example.json config/allowlist.json
-  say "Created config/allowlist.json from the example. Edit it before enabling writes."
+  printf '{
+  "buttons": [],
+  "variables": []
+}
+' > config/allowlist.json
+  say "Created an EMPTY config/allowlist.json. Nothing can be pressed until you add your own buttons."
+  say "See config/allowlist.example.json for the format."
 fi
 mkdir -p logs
 
@@ -67,12 +72,15 @@ cat <<EOF
  Developed by MyEvent Labs
 ================================================================================
 
- 1. Edit the allowlist (the buttons and variables the AI may write):
+ 1. Add your buttons to the allowlist. It starts EMPTY, so nothing can be
+    pressed until you do. Use the page/row/column shown in Companion's button
+    editor and check each one really exists on that page.
       $DIR/config/allowlist.json
+    Format example: $DIR/config/allowlist.example.json
 
  2. Add this to your MCP client config (Claude Desktop, Cursor, Windsurf, etc.).
-    Writes are DISABLED here on purpose. Set COMPANION_ALLOW_WRITES to "true"
-    only for a show, then set it back.
+    Writes are DISABLED ("false"). To let the AI press allowlisted buttons,
+    change COMPANION_ALLOW_WRITES to "true" and restart the client.
 
 {
   "mcpServers": {

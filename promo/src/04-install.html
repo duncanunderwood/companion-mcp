@@ -1,0 +1,40 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css"></head><body><div class="bg"></div>
+<div style="position:absolute;left:80px;top:130px;width:520px">
+  <h1 style="font-size:46px">One line to install.<br><span>Zero to ping in a minute.</span></h1>
+  <p class="lead" style="font-size:19px">Clones, builds, creates an empty allowlist, checks the server starts and fails closed, then prints the client config with your paths already filled in. macOS, Linux and Windows.</p>
+  <div style="margin-top:26px;font-size:15px;color:#aab3c5;line-height:1.9">
+    <div><span class="mono cy">curl -fsSL .../install.sh | bash</span></div>
+    <div><span class="mono cy">irm .../install.ps1 | iex</span></div>
+  </div>
+</div>
+<div class="win" style="left:660px;top:80px;width:880px;height:760px">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">Terminal</span></div>
+  <div class="term mono" style="font-size:14px;line-height:1.6"><span class="pr">$</span> <span class="cmd">curl -fsSL https://raw.githubusercontent.com/.../install.sh | bash</span>
+<span class="cy">[companion-mcp]</span> Cloning into /Users/sam/companion-mcp
+<span class="cy">[companion-mcp]</span> Installing dependencies
+<span class="cy">[companion-mcp]</span> Building
+<span class="cy">[companion-mcp]</span> Created an EMPTY config/allowlist.json. Add buttons before use.
+<span class="cy">[companion-mcp]</span> Checking the server starts
+<span class="cy">[companion-mcp]</span> Server starts and fails closed as expected
+
+<span class="dim">==========================================================</span>
+ Installed to: /Users/sam/companion-mcp
+<span class="dim">==========================================================</span>
+
+ 1. Add your buttons to the allowlist. It starts EMPTY, so nothing can be
+      /Users/sam/companion-mcp/config/allowlist.json
+
+ 2. Add this to your MCP client config. Writes are DISABLED ("false").
+
+<span class="dim">{
+  "mcpServers": {
+    "companion": {
+      "command": "node",
+      "args": ["/Users/sam/companion-mcp/dist/index.js"],
+      "env": {
+        "COMPANION_ALLOW_WRITES": "false", ...</span>
+
+ 3. Restart your client and ask it to run the "ping" tool.</div>
+</div>
+<div class="brand">Developed by <b>MyEvent Labs</b></div>
+</body></html>

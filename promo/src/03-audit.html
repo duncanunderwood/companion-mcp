@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css"></head><body><div class="bg"></div>
+<div style="position:absolute;left:80px;top:110px;width:520px">
+  <h1 style="font-size:46px">Every call,<br><span>on the record.</span></h1>
+  <p class="lead" style="font-size:19px">One JSON line per tool call. An "attempt" line lands before any real write, and if the log cannot be written, writes are refused. Values are never logged. Rotates at 5 MB.</p>
+  <div style="margin-top:28px;display:flex;flex-direction:column;gap:10px;font-size:15px;color:#aab3c5">
+    <div><span class="pill ok">ok</span> &nbsp;accepted by Companion</div>
+    <div><span class="pill no">refused</span> &nbsp;blocked by a gate, nothing sent</div>
+    <div><span class="pill dry">attempt</span> &nbsp;written before a real write</div>
+    <div><span class="pill off">error</span> &nbsp;outcome unknown, verify in Companion</div>
+  </div>
+</div>
+<div class="win" style="left:660px;top:90px;width:880px;height:720px">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title mono">logs/companion-mcp.jsonl</span></div>
+  <div class="log mono" style="font-size:13px"><span class="k">{</span><span class="s">"ts"</span>:<span class="s">"19:58:02Z"</span>, <span class="s">"tool"</span>:<span class="s">"ping"</span>, <span class="s">"outcome"</span>:<span class="t">"ok"</span>,
+  <span class="s">"detail"</span>:<span class="s">"Writes ENABLED. Companion at 10.0.0.5:8000"</span><span class="k">}</span>
+<span class="k">{</span><span class="s">"ts"</span>:<span class="s">"19:58:40Z"</span>, <span class="s">"tool"</span>:<span class="s">"press_button"</span>, <span class="s">"args"</span>:{<span class="s">"page"</span>:<span class="n">1</span>,<span class="s">"row"</span>:<span class="n">0</span>,<span class="s">"column"</span>:<span class="n">1</span>,<span class="s">"dry_run"</span>:<span class="n">true</span>},
+  <span class="s">"outcome"</span>:<span class="t">"ok"</span>, <span class="s">"dryRun"</span>:<span class="n">true</span>, <span class="s">"detail"</span>:<span class="s">"DRY RUN: would POST /api/location/1/0/1/press. Nothing sent."</span><span class="k">}</span>
+<span class="k">{</span><span class="s">"ts"</span>:<span class="s">"19:58:44Z"</span>, <span class="s">"tool"</span>:<span class="s">"press_button"</span>, <span class="s">"args"</span>:{<span class="s">"page"</span>:<span class="n">1</span>,<span class="s">"row"</span>:<span class="n">0</span>,<span class="s">"column"</span>:<span class="n">1</span>,<span class="s">"confirm"</span>:<span class="n">false</span>},
+  <span class="s">"outcome"</span>:<span class="w">"attempt"</span>, <span class="s">"detail"</span>:<span class="s">"about to press \"Program: Camera 2\" at 1/0/1"</span><span class="k">}</span>
+<span class="k">{</span><span class="s">"ts"</span>:<span class="s">"19:58:44Z"</span>, <span class="s">"tool"</span>:<span class="s">"press_button"</span>, <span class="s">"args"</span>:{<span class="s">"page"</span>:<span class="n">1</span>,<span class="s">"row"</span>:<span class="n">0</span>,<span class="s">"column"</span>:<span class="n">1</span>,<span class="s">"dry_run"</span>:<span class="n">false</span>},
+  <span class="s">"outcome"</span>:<span class="t">"ok"</span>, <span class="s">"allowed"</span>:<span class="n">true</span>, <span class="s">"durationMs"</span>:<span class="n">11</span><span class="k">}</span>
+<span class="k">{</span><span class="s">"ts"</span>:<span class="s">"19:59:10Z"</span>, <span class="s">"tool"</span>:<span class="s">"set_custom_variable"</span>, <span class="s">"args"</span>:{<span class="s">"name"</span>:<span class="s">"lower_third"</span>,<span class="s">"value"</span>:<span class="f">"[redacted]"</span>},
+  <span class="s">"outcome"</span>:<span class="w">"attempt"</span><span class="k">}</span>
+<span class="k">{</span><span class="s">"ts"</span>:<span class="s">"19:59:10Z"</span>, <span class="s">"tool"</span>:<span class="s">"set_custom_variable"</span>, <span class="s">"args"</span>:{<span class="s">"name"</span>:<span class="s">"lower_third"</span>},
+  <span class="s">"outcome"</span>:<span class="t">"ok"</span>, <span class="s">"detail"</span>:<span class="s">"set custom:lower_third (7 characters)"</span><span class="k">}</span>
+<span class="k">{</span><span class="s">"ts"</span>:<span class="s">"20:03:51Z"</span>, <span class="s">"tool"</span>:<span class="s">"press_button"</span>, <span class="s">"args"</span>:{<span class="s">"page"</span>:<span class="n">2</span>,<span class="s">"row"</span>:<span class="n">1</span>,<span class="s">"column"</span>:<span class="n">4</span>,<span class="s">"dry_run"</span>:<span class="n">false</span>},
+  <span class="s">"outcome"</span>:<span class="f">"refused"</span>, <span class="s">"allowed"</span>:<span class="n">false</span>, <span class="s">"detail"</span>:<span class="s">"REFUSED: button 2/1/4 is not on the allowlist"</span><span class="k">}</span>
+<span class="k">{</span><span class="s">"ts"</span>:<span class="s">"20:04:12Z"</span>, <span class="s">"tool"</span>:<span class="s">"press_button"</span>, <span class="s">"args"</span>:{<span class="s">"page"</span>:<span class="n">1</span>,<span class="s">"row"</span>:<span class="n">3</span>,<span class="s">"column"</span>:<span class="n">7</span>,<span class="s">"dry_run"</span>:<span class="n">false</span>},
+  <span class="s">"outcome"</span>:<span class="f">"refused"</span>, <span class="s">"detail"</span>:<span class="s">"REFUSED: button \"STREAM STOP\" is high risk and requires confirm: true"</span><span class="k">}</span>
+<span class="k">{</span><span class="s">"ts"</span>:<span class="s">"20:04:30Z"</span>, <span class="s">"tool"</span>:<span class="s">"press_button"</span>, <span class="s">"args"</span>:{<span class="s">"page"</span>:<span class="n">1</span>,<span class="s">"row"</span>:<span class="n">3</span>,<span class="s">"column"</span>:<span class="n">7</span>,<span class="s">"confirm"</span>:<span class="n">true</span>},
+  <span class="s">"outcome"</span>:<span class="w">"attempt"</span>, <span class="s">"detail"</span>:<span class="s">"about to press \"STREAM STOP\" at 1/3/7"</span><span class="k">}</span>
+<span class="k">{</span><span class="s">"ts"</span>:<span class="s">"20:04:33Z"</span>, <span class="s">"tool"</span>:<span class="s">"press_button"</span>, <span class="s">"outcome"</span>:<span class="s">"error"</span>,
+  <span class="s">"detail"</span>:<span class="s">"Companion did not respond within 3000ms. Outcome unknown, verify in Companion before acting again."</span><span class="k">}</span></div>
+</div>
+<div class="brand">Developed by <b>MyEvent Labs</b></div>
+</body></html>

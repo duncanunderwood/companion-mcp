@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css"></head><body><div class="bg"></div>
+<div style="position:absolute;left:80px;top:150px;width:640px">
+  <div class="pill off" style="margin-bottom:22px">MCP SERVER FOR BITFOCUS COMPANION 5</div>
+  <h1>Your AI on the desk.<br><span>Never on the wrong button.</span></h1>
+  <p class="lead">companion-mcp lets Claude, Cursor or any MCP client read show state and press only the buttons you put on an allowlist. Dry run by default. Every call logged. No retries, ever.</p>
+  <div style="margin-top:34px;display:flex;gap:12px;flex-wrap:wrap">
+    <span class="pill ok">Allowlist gated</span><span class="pill dry">Dry run default</span><span class="pill ok">Audit logged</span><span class="pill off">Read-only until you say so</span>
+  </div>
+</div>
+<div class="win" style="left:800px;top:120px;width:720px;height:640px">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">Claude Desktop</span></div>
+  <div class="chat">
+    <div class="msg user">Cut to camera 2 and put "Keynote" on the lower third variable.</div>
+    <div class="tool"><div class="h"><b>press_button</b><span class="pill ok">OK</span></div><div class="kv mono">page <b>1</b> row <b>0</b> column <b>1</b> dry_run <b>false</b></div><div style="margin-top:6px;color:#c9d2e6">pressed "Program: Camera 2" at 1/0/1. Companion accepted the press.</div></div>
+    <div class="tool"><div class="h"><b>set_custom_variable</b><span class="pill ok">OK</span></div><div class="kv mono">name <b>lower_third</b> dry_run <b>false</b></div><div style="margin-top:6px;color:#c9d2e6">set custom:lower_third (7 characters)</div></div>
+    <div class="tool"><div class="h"><b>get_module_variable</b><span class="pill ok">OK</span></div><div class="kv mono">atem:program_input</div><div style="margin-top:6px;color:#c9d2e6">atem:program_input = Cam 2</div></div>
+    <div class="msg ai">Done. Camera 2 is on program (confirmed from the ATEM) and the lower third now reads "Keynote".</div>
+  </div>
+</div>
+<div class="brand">Developed by <b>MyEvent Labs</b></div>
+</body></html>

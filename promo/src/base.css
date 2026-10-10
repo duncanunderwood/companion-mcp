@@ -1,0 +1,28 @@
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1600px;height:900px;overflow:hidden;background:#0b0d12;color:#e6e8ee;font-family:"Segoe UI",Inter,system-ui,sans-serif}
+.bg{position:absolute;inset:0;background:radial-gradient(1200px 600px at 20% 10%,#1a2240 0%,transparent 60%),radial-gradient(900px 500px at 90% 90%,#2a1a3a 0%,transparent 60%),#0b0d12}
+.mono{font-family:"Cascadia Code","JetBrains Mono",Consolas,monospace}
+.win{position:absolute;background:#12151c;border:1px solid #262b36;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden}
+.bar{height:40px;background:#171b24;border-bottom:1px solid #262b36;display:flex;align-items:center;padding:0 14px;gap:8px;font-size:13px;color:#8a93a6}
+.dot{width:12px;height:12px;border-radius:50%}
+.r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+.title{margin-left:10px}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.3px}
+.ok{background:#153d2a;color:#5fe3a1}.no{background:#4a1d22;color:#ff7b86}.dry{background:#3a3414;color:#ffd866}.off{background:#2a2f3a;color:#aab3c5}
+.brand{position:absolute;right:40px;bottom:28px;font-size:14px;color:#6c7589;letter-spacing:.4px}
+.brand b{color:#aab3c5}
+h1{font-size:54px;font-weight:700;letter-spacing:-1px;line-height:1.05}
+h1 span{color:#6ea8ff}
+p.lead{font-size:22px;color:#aab3c5;line-height:1.45;margin-top:18px}
+.chat{padding:26px 30px;display:flex;flex-direction:column;gap:18px;font-size:16px}
+.msg{max-width:88%;padding:14px 18px;border-radius:14px;line-height:1.5}
+.user{align-self:flex-end;background:#2b3a5e;color:#e9eefb}
+.ai{align-self:flex-start;background:#1b1f29;border:1px solid #262b36}
+.tool{align-self:flex-start;background:#0f1218;border:1px solid #262b36;border-left:3px solid #6ea8ff;font-size:14px;width:88%;padding:12px 16px}
+.tool .h{display:flex;justify-content:space-between;align-items:center;color:#8a93a6;margin-bottom:8px}
+.tool .h b{color:#c9d2e6}
+.kv{color:#aab3c5}.kv b{color:#e6e8ee;font-weight:500}
+.log{padding:22px 26px;font-size:14px;line-height:1.75;white-space:pre}
+.k{color:#8a93a6}.s{color:#9ad1ff}.n{color:#ffb86c}.t{color:#5fe3a1}.f{color:#ff7b86}.w{color:#ffd866}
+.term{padding:22px 26px;font-size:15px;line-height:1.7;white-space:pre}
+.pr{color:#5fe3a1}.cmd{color:#e6e8ee}.dim{color:#6c7589}.cy{color:#6ea8ff}
